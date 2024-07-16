@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace fASN1.NET;
@@ -22,9 +23,9 @@ public static partial class Asn1Serializer
     /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>.
     /// </param>    
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(byte[] data)
+    public static ITag? Deserialize(Stream stream)
     {
-        return Deserialize(data, new DefaultTagFactory());
+        return Deserialize(stream, new DefaultTagFactory());
     }
 
     /// <summary>
@@ -35,13 +36,12 @@ public static partial class Asn1Serializer
     /// </param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(byte[] data, ITagFactory tagFactory)
+    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory)
     {
-        var stream = new MemoryStream(data);
-        return DeserializeInternal(stream, data, tagFactory);
+        return DeserializeInternal(stream, tagFactory);
     }
 
-    private static ITag? DeserializeInternal(Stream stream, byte[] data, ITagFactory tagFactory)
+    private static ITag? DeserializeInternal(Stream stream, ITagFactory tagFactory)
     {
         var tagNumber = stream.ReadByte();
         if (tagNumber == -1)
@@ -49,31 +49,45 @@ public static partial class Asn1Serializer
             return null;
         }
         var tag = tagFactory.Create(tagNumber);
-        long? length = DecodeLength(stream);
+        long? length = DecodeLength(stream, out var valid);
+        if (!valid)
+        {
+            return null;
+        }
         var start = stream.Position;
 
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
         {
-            GetChildren(tag.Children, stream, data, ref length, tagFactory);
-            //tag.Children.AddRange(children);
+            if (!GetChildren(tag.Children, stream, ref length, tagFactory))
+            {
+                return null;
+            }
         }
         else if (tag.IsUniversal && tag.TagNumber is (int)Tag.BitString or (int)Tag.OctetString)
         {
-            try
+            if (tag.TagNumber is (int)Tag.BitString && stream.ReadByte() != 0)
             {
-                if (tag.TagNumber is (int)Tag.BitString && stream.ReadByte() != 0)
-                {
-                    throw new InvalidDataException("BitString with unused bits cannot encapsulate");
-                }
-                GetChildren(tag.Children, stream, data, ref length, tagFactory);
-                foreach (var item in tag.Children)
-                {
-                    if (item.IsEoc)
-                        throw new InvalidDataException("EOC is not supposed to be actual content");
-                }
-                //tag.Children.AddRange(children);
+                //throw new InvalidDataException("BitString with unused bits cannot encapsulate");
+                Cleanup();
             }
-            catch
+            else
+            {
+                if (!GetChildren(tag.Children, stream, ref length, tagFactory))
+                {
+                    Cleanup();
+                }
+                else
+                {
+                    foreach (var item in tag.Children)
+                    {
+                        if (item.IsEoc)
+                            Cleanup();
+                        //throw new InvalidDataException("EOC is not supposed to be actual content");
+                    }
+                }
+            }
+
+            void Cleanup()
             {
                 tag.Children.Clear();
                 stream.Position = start;
@@ -84,7 +98,8 @@ public static partial class Asn1Serializer
         {
             if (length is null)
             {
-                throw new InvalidDataException($"Cannot skip over an invalid tag with indefinite length at offset {start}");
+                return null;
+                //throw new InvalidDataException($"Cannot skip over an invalid tag with indefinite length at offset {start}");
             }
             //var position = stream.Position;
             var content = new byte[length.Value];
@@ -94,7 +109,7 @@ public static partial class Asn1Serializer
         return tag;
     }
 
-    static void GetChildren(IList<ITag> tags, Stream stream, byte[] data, ref long? length, ITagFactory tagFactory)
+    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ITagFactory tagFactory)
     {
         //List<ITag> tags = [];
         var start = stream.Position;
@@ -103,19 +118,26 @@ public static partial class Asn1Serializer
             var end = stream.Position + length.Value;
             if (end > stream.Length)
             {
-                throw new InvalidDataException($"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream");
+                return false;
+                //throw new InvalidDataException($"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream");
             }
             while (stream.Position < end)
             {
-                var child = DeserializeInternal(stream, data, tagFactory);
-                if (child is not null)
+                var child = DeserializeInternal(stream, tagFactory);
+                if (child is null)
+                {
+                    stream.Position = start;
+                    return false;
+                }
+                else
                     tags.Add(child);
             }
             if (stream.Position != end)
             {
-                throw new InvalidDataException($"Content size is not correct for container at offset {start}");
+                return false;
+                //throw new InvalidDataException($"Content size is not correct for container at offset {start}");
             }
-            return;
+            return true;
         }
 
         try
@@ -123,7 +145,7 @@ public static partial class Asn1Serializer
 
             while (true)
             {
-                var tag = DeserializeInternal(stream, data, tagFactory);
+                var tag = DeserializeInternal(stream, tagFactory);
                 if (tag is null or { IsEoc: true })
                 {
                     break;
@@ -131,7 +153,7 @@ public static partial class Asn1Serializer
                 tags.Add(tag);
             }
             length = stream.Position - start;
-            //return tags;
+            return true;
         }
         catch (Exception ex)
         {
@@ -139,8 +161,9 @@ public static partial class Asn1Serializer
         }
     }
 
-    static int? DecodeLength(Stream data)
+    static int? DecodeLength(Stream data, out bool valid)
     {
+        valid = true;
         var buf = (int)data.ReadByte();
         var len = buf & 0x7f;
 
@@ -149,7 +172,10 @@ public static partial class Asn1Serializer
         if (len == 0)
             return null;
         if (len > 6)
-            throw new ArgumentOutOfRangeException(nameof(data), "Length over 48 bits not supported;");
+        {
+            valid = false;
+            return null; // Length over 48 bits not supported
+        }
 
         buf = 0;
         for (int y = 0; y < len; y++)
