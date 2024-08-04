@@ -19,7 +19,7 @@ public class BitString : ITag
     public BitString(byte content) : this([content], null) { }
 
     public int TagNumber { get; } = 3;
-    public string TagName { get; } = "BIT_STRING";
+    public string TagName { get; } = Tag.BitString.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

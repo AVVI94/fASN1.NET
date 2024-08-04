@@ -13,7 +13,7 @@ public class ObjectIdentifier : ITag
         Children = new List<ITag>();
     }
     public int TagNumber { get; } = 6;
-    public string TagName { get; } = "OBJECT_IDENTIFIER";
+    public string TagName { get; } = Tag.ObjectIdentifier.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed { get; } = false;
     public bool IsUniversal { get; } = true;

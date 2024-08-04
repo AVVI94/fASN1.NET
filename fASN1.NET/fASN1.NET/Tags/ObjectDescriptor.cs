@@ -11,7 +11,7 @@ public class ObjectDescriptor : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 7;
-    public string TagName { get; } = "ObjectDescriptor";
+    public string TagName { get; } = Tag.ObjectDescriptor.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

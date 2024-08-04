@@ -11,7 +11,7 @@ public class EmbeddedPdv : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 10;
-    public string TagName { get; } = "ENUMERATED_PDV";
+    public string TagName { get; } = Tag.EmbeddedPDV.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => true;
     public bool IsUniversal { get; } = true;

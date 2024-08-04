@@ -11,7 +11,7 @@ public class Real : ITag
         Children = new List<ITag>();
     }
     public int TagNumber { get; } = 9;
-    public string TagName { get; } = "REAL";
+    public string TagName { get; } = Tag.Real.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed { get; } = false;
     public bool IsUniversal { get; } = true;

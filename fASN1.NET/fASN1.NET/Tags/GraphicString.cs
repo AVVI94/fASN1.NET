@@ -11,7 +11,7 @@ public class GraphicString : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 25;
-    public string TagName { get; } = "GraphicString";
+    public string TagName { get; } = Tag.GraphicString.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

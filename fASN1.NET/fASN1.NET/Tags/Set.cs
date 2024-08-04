@@ -11,7 +11,7 @@ public class Set : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 49;
-    public string TagName { get; } = "SET";
+    public string TagName { get; } = Tag.Set.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => true;
     public bool IsUniversal { get; } = true;

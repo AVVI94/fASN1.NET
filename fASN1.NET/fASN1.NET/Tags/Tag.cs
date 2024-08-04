@@ -35,3 +35,42 @@ public enum Tag
     CharacterString = 0x1D,
     BMPString = 0x1E,
 }
+
+public static class TagEnumExtensions
+{
+    public static string ToString2(this Tag tag)
+    {
+        return tag switch
+        {
+            Tag.Eoc => "Eoc",
+            Tag.Boolean => "Boolean",
+            Tag.Integer => "Integer",
+            Tag.BitString => "BitString",
+            Tag.OctetString => "OctetString",
+            Tag.Null => "Null",
+            Tag.ObjectIdentifier => "ObjectIdentifier",
+            Tag.ObjectDescriptor => "ObjectDescriptor",
+            Tag.External => "External",
+            Tag.Real => "Real",
+            Tag.Enumerated => "Enumerated",
+            Tag.EmbeddedPDV => "EmbeddedPDV",
+            Tag.UTF8String => "UTF8String",
+            Tag.Sequence => "Sequence",
+            Tag.Set => "Set",
+            Tag.NumericString => "NumericString",
+            Tag.PrintableString => "PrintableString",
+            Tag.TeletexString => "TeletexString",
+            Tag.VideotexString => "VideotexString",
+            Tag.IA5String => "IA5String",
+            Tag.UTCTime => "UTCTime",
+            Tag.GeneralizedTime => "GeneralizedTime",
+            Tag.GraphicString => "GraphicString",
+            Tag.VisibleString => "VisibleString",
+            Tag.GeneralString => "GeneralString",
+            Tag.UniversalString => "UniversalString",
+            Tag.CharacterString => "CharacterString",
+            Tag.BMPString => "BMPString",
+            _ => tag.ToString(),
+        };
+    }
+}

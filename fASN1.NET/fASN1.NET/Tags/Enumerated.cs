@@ -11,7 +11,7 @@ public class Enumerated : ITag
         Children = new List<ITag>();
     }
     public int TagNumber { get; } = 10;
-    public string TagName { get; } = "ENUMERATED";
+    public string TagName { get; } = Tag.Enumerated.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed { get; } = false;
     public bool IsUniversal { get; } = true;

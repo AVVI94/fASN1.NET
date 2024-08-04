@@ -11,7 +11,7 @@ public class TeletexString : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 20;
-    public string TagName { get; } = "TeletextString";
+    public string TagName { get; } = Tag.TeletexString.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

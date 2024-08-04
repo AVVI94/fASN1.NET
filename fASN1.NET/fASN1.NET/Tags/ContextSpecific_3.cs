@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 namespace fASN1.NET.Tags;
 public class ContextSpecific_3 : ITag
 {
-    public ContextSpecific_3(int tagNumber, byte[]? content = null, IList<ITag>? children = null)
+    public ContextSpecific_3(byte[]? content = null, IList<ITag>? children = null)
     {
-        TagNumber = tagNumber;
+        TagNumber = 163;
         TagName = $"[3]";
         Content = content ?? [];
         Children = children ?? new List<ITag>();

@@ -11,7 +11,7 @@ public class Null : ITag
         Content = [];
     }
     public int TagNumber { get; } = 5;
-    public string TagName { get; } = "NULL";
+    public string TagName { get; } = Tag.Null.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed { get; } = false;
     public bool IsUniversal { get; } = true;

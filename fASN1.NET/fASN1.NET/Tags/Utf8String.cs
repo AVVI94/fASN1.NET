@@ -11,7 +11,7 @@ public class Utf8String : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 12;
-    public string TagName { get; } = "UTF8String";
+    public string TagName { get; } = Tag.UTF8String.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

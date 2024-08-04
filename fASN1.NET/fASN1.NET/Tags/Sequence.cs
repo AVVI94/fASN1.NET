@@ -11,7 +11,7 @@ public class Sequence : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 48;
-    public string TagName { get; } = "SEQUENCE";
+    public string TagName { get; } = Tag.Sequence.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => true;
     public bool IsUniversal { get; } = true;

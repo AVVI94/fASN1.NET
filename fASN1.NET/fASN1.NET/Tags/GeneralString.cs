@@ -11,7 +11,7 @@ public class GeneralString : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 27;
-    public string TagName { get; } = "GeneralString";
+    public string TagName { get; } = Tag.GeneralString.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;

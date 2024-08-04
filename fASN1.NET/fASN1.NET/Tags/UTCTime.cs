@@ -11,7 +11,7 @@ public class UTCTime : ITag
         Children = children ?? new List<ITag>();
     }
     public int TagNumber { get; } = 23;
-    public string TagName { get; } = "UTCTime";
+    public string TagName { get; } = Tag.UTCTime.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
     public bool IsUniversal { get; } = true;
