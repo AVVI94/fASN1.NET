@@ -1,32 +1,54 @@
 ﻿// See https://aka.ms/new-console-template for more information
-var data = Convert.FromBase64String("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");
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using fASN1.NET;
+using fASN1.NET.Tags;
+
+var data = Convert.FromBase64String("MIIEozCCBEmgAwIBAgIQTij3hrZsGjuULNLEDrdCpTAKBggqhkjOPQQDAjCBjzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQDEy5TZWN0aWdvIEVDQyBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENBMB4XDTI0MDMwNzAwMDAwMFoXDTI1MDMwNzIzNTk1OVowFTETMBEGA1UEAxMKZ2l0aHViLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABARO/Ho9XdkY1qh9mAgjOUkWmXTb05jgRulKciMVBuKB3ZHexvCdyoiCRHEMBfFXoZhWkQVMogNLo/lW215X3pGjggL+MIIC+jAfBgNVHSMEGDAWgBT2hQo7EYbhBH0Oqgss0u7MZHt7rjAdBgNVHQ4EFgQUO2g/NDr1RzTK76ZOPZq9Xm56zJ8wDgYDVR0PAQH/BAQDAgeAMAwGA1UdEwEB/wQCMAAwHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMEkGA1UdIARCMEAwNAYLKwYBBAGyMQECAgcwJTAjBggrBgEFBQcCARYXaHR0cHM6Ly9zZWN0aWdvLmNvbS9DUFMwCAYGZ4EMAQIBMIGEBggrBgEFBQcBAQR4MHYwTwYIKwYBBQUHMAKGQ2h0dHA6Ly9jcnQuc2VjdGlnby5jb20vU2VjdGlnb0VDQ0RvbWFpblZhbGlkYXRpb25TZWN1cmVTZXJ2ZXJDQS5jcnQwIwYIKwYBBQUHMAGGF2h0dHA6Ly9vY3NwLnNlY3RpZ28uY29tMIIBgAYKKwYBBAHWeQIEAgSCAXAEggFsAWoAdwDPEVbu1S58r/OHW9lpLpvpGnFnSrAX7KwB0lt3zsw7CAAAAY4WOvAZAAAEAwBIMEYCIQD7oNz/2oO8VGaWWrqrsBQBzQH0hRhMLm11oeMpg1fNawIhAKWc0q7Z+mxDVYV/6ov7f/i0H/aAcHSCIi/QJcECraOpAHYAouMK5EXvva2bfjjtR2d3U9eCW4SU1yteGyzEuVCkR+cAAAGOFjrv+AAABAMARzBFAiEAyupEIVAMk0c8BVVpF0QbisfoEwy5xJQKQOe8EvMU4W8CIGAIIuzjxBFlHpkqcsa7UZy24y/B6xZnktUw/Ne5q5hCAHcATnWjJ1yaEMM4W2zU3z9S6x3w4I4bjWnAsfpksWKaOd8AAAGOFjrv9wAABAMASDBGAiEA+8OvQzpgRf31uLBsCE8ktCUfvsiRT7zWSqeXliA09TUCIQDcB7Xn97aEDMBKXIbdm5KZ9GjvRyoF9skD5/4GneoMWzAlBgNVHREEHjAcggpnaXRodWIuY29tgg53d3cuZ2l0aHViLmNvbTAKBggqhkjOPQQDAgNIADBFAiEAru2McPr0eNwcWNuDEY0a/rGzXRfRrm+6XfZeSzhYZewCIBq4TUEBCgapv7xvAtRKdVdi/b4m36Uyej1ggyJsiesA");
+
 using var ms = new MemoryStream(data);
-var tag = fASN1.NET.Asn1Serializer.Deserialize(ms, out _);
-var str = fASN1.NET.Asn1Serializer.TagToString(tag!);
-//var str2 = fASN1.NET.Asn1Serializer.TagToString(tag!);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//ms.Position = 0;
-//tag = fASN1.NET.Asn1Serializer.Deserialize(ms);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//ms.Position = 0;
-//tag = fASN1.NET.Asn1Serializer.Deserialize(ms);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//ms.Position = 0;
-//tag = fASN1.NET.Asn1Serializer.Deserialize(ms);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//ms.Position = 0;
-//tag = fASN1.NET.Asn1Serializer.Deserialize(ms);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//ms.Position = 0;
-//tag = fASN1.NET.Asn1Serializer.Deserialize(ms);
-//GC.Collect();
-//GC.WaitForPendingFinalizers();
-//_ = fASN1.NET.Asn1Serializer.TagToString(tag);
-Console.WriteLine(str);
-//Console.WriteLine(str2);
-Console.ReadLine();
+var tag = Asn1Serializer.Deserialize(ms);
+
+if (Asn1Serializer.TryDeserialize(data, out var tag2, out var error) is false)
+{
+    Console.WriteLine($"Data deserialization error: {error}");
+    return;
+}
+
+if (tag.TryGetCertificateSubjectItem(SubjectItemKind.CommonName, true, out List<string> issuerCn))
+{
+    Console.WriteLine($"Issuer CN: {issuerCn[0]}");
+}
+
+if (tag.TryGetCertificateSubjectItem(SubjectItemKind.CommonName, false, out List<string> subjectCn))
+{
+    Console.WriteLine($"Issuer CN: {subjectCn[0]}");
+}
+
+if (tag.TryGetCertificateNotAfter(out var notAfter))
+{
+    Console.WriteLine($"Not After: {notAfter}");
+}
+
+if (tag.TryGetKeyUsage(out var ku))
+{
+    Console.WriteLine($"Key Usage: {ku}");
+}
+
+//var root = new Sequence([
+//    new Integer([1]),
+//    new Sequence([
+//        new ObjectIdentifier([0,1,35,45,55,127,126]),
+//        new Utf8String(Encoding.UTF8.GetBytes("Random text")),
+//        new ContextSpecific_0(children: [
+//            new BitString(content: [123,125,222,255,0,1,4])
+//            ])
+//    ])
+//]);
+
+//var serialized = Asn1Serializer.Serialize(root);
+//var deserializedTag = Asn1Serializer.Deserialize(serialized);
+//var deserializedText = Asn1Serializer.TagToString(deserializedTag);
+//Console.WriteLine(deserializedText);
