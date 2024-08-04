@@ -23,9 +23,19 @@ public static partial class Asn1Serializer
     /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>.
     /// </param>    
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream)
+    public static ITag? Deserialize(Stream stream) => Deserialize(stream, out _);
+
+    /// <summary>
+    /// Deserializes the ASN.1 data from the specified stream.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.<br/>
+    /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>.
+    /// </param>    
+    /// <param name="error">The error message if the deserialization fails.</param>
+    /// <returns>The deserialized ASN.1 tag.</returns>
+    public static ITag? Deserialize(Stream stream, out string? error)
     {
-        return Deserialize(stream, new DefaultTagFactory());
+        return Deserialize(stream, new DefaultTagFactory(), out error);
     }
 
     /// <summary>
@@ -36,12 +46,24 @@ public static partial class Asn1Serializer
     /// </param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory)
+    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory) => Deserialize(stream, tagFactory, out _);
+    
+    /// <summary>
+    /// Deserializes the ASN.1 data from the specified stream using the specified tag factory.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.<br/>
+    /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>. 
+    /// </param>
+    /// <param name="error">The error message if the deserialization fails.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <returns>The deserialized ASN.1 tag.</returns>
+    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory, out string? error)
     {
-        return DeserializeInternal(stream, tagFactory);
+        error = "";
+        return DeserializeInternal(stream, ref error, tagFactory);
     }
 
-    private static ITag? DeserializeInternal(Stream stream, ITagFactory tagFactory)
+    private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
     {
         var tagNumber = stream.ReadByte();
         if (tagNumber == -1)
@@ -58,7 +80,7 @@ public static partial class Asn1Serializer
 
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
         {
-            if (!GetChildren(tag.Children, stream, ref length, tagFactory))
+            if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory))
             {
                 return null;
             }
@@ -68,11 +90,12 @@ public static partial class Asn1Serializer
             if (tag.TagNumber is (int)Tag.BitString && stream.ReadByte() != 0)
             {
                 //throw new InvalidDataException("BitString with unused bits cannot encapsulate");
+                error = "BitString with unused bits cannot encapsulate";
                 Cleanup();
             }
             else
             {
-                if (!GetChildren(tag.Children, stream, ref length, tagFactory))
+                if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory))
                 {
                     Cleanup();
                 }
@@ -81,7 +104,10 @@ public static partial class Asn1Serializer
                     foreach (var item in tag.Children)
                     {
                         if (item.IsEoc)
+                        {
                             Cleanup();
+                            error = "EOC is not supposed to be actual content";
+                        }
                         //throw new InvalidDataException("EOC is not supposed to be actual content");
                     }
                 }
@@ -98,6 +124,7 @@ public static partial class Asn1Serializer
         {
             if (length is null)
             {
+                error = "Cannot skip over an invalid tag with indefinite length";
                 return null;
                 //throw new InvalidDataException($"Cannot skip over an invalid tag with indefinite length at offset {start}");
             }
@@ -109,7 +136,7 @@ public static partial class Asn1Serializer
         return tag;
     }
 
-    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ITagFactory tagFactory)
+    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ref string? error, ITagFactory tagFactory)
     {
         //List<ITag> tags = [];
         var start = stream.Position;
@@ -118,12 +145,13 @@ public static partial class Asn1Serializer
             var end = stream.Position + length.Value;
             if (end > stream.Length)
             {
+                error = $"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream";
                 return false;
                 //throw new InvalidDataException($"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream");
             }
             while (stream.Position < end)
             {
-                var child = DeserializeInternal(stream, tagFactory);
+                var child = DeserializeInternal(stream, ref error, tagFactory);
                 if (child is null)
                 {
                     stream.Position = start;
@@ -134,6 +162,7 @@ public static partial class Asn1Serializer
             }
             if (stream.Position != end)
             {
+                error = $"Content size is not correct for container at offset {start}";
                 return false;
                 //throw new InvalidDataException($"Content size is not correct for container at offset {start}");
             }
@@ -145,7 +174,7 @@ public static partial class Asn1Serializer
 
             while (true)
             {
-                var tag = DeserializeInternal(stream, tagFactory);
+                var tag = DeserializeInternal(stream, ref error, tagFactory);
                 if (tag is null or { IsEoc: true })
                 {
                     break;

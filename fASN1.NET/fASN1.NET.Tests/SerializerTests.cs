@@ -186,7 +186,7 @@ public class SerializerTests
 
         var options = new Asn1StringSerializerOptions
         {
-            MaximumContentLineLength = 20,
+            MaximumContentLineLength = 22,
             ContentLengthHandling = ContentLengthHandling.Wrap,
             IndentationString = "",
             IncludeTagNameForContentTags = false
@@ -195,10 +195,10 @@ public class SerializerTests
         // Act
         var result = Asn1Serializer.TagToString(tag, options);
 
-        // Assert
-        Assert.Contains("This is a very long", result);
-        Assert.Contains("content that should", result);
-        Assert.Contains("be wrapped.", result);
+        // 
+        Assert.StartsWith(Environment.NewLine + "This is a very long co", result);
+        Assert.Contains("ntent that should be w", result);
+        Assert.Contains("rapped.", result);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class SerializerTests
         var result = Asn1Serializer.TagToString(tag, options);
 
         // Assert
-        Assert.StartsWith("This is a very long", result);
+        Assert.StartsWith(Environment.NewLine + "This is a very long", result);
         Assert.Contains("content that should", result);
         Assert.EndsWith("be word wrapped.", result);
     }
@@ -263,8 +263,8 @@ public class SerializerTests
         Assert.NotNull(tag);
         var serialized = Asn1Serializer.TagToString(tag, new Asn1StringSerializerOptions()
         {
-            ContentLengthHandling = ContentLengthHandling.Truncate,
-            IncludeTagNameForContentTags = false,            
+            ContentLengthHandling = ContentLengthHandling.WordWrap,
+            IncludeTagNameForContentTags = true,
         });
         Assert.NotNull(serialized);
 

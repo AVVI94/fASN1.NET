@@ -72,12 +72,11 @@ public static partial class Asn1Serializer
     /// <param name="tag">The ASN.1 tag to convert.</param>
     /// <param name="options">The options for serializing the ASN.1 tag.</param>
     /// <returns>The string representation of the ASN.1 tag.</returns>
-    public static string TagToString(ITag tag, Asn1StringSerializerOptions options)
+    public static string TagToString(ITag tag, Action<Asn1StringSerializerOptions> options)
     {
-        EnsureValidOptions(options);
-        var sb = new StringBuilder();
-        TagToStringInternal(tag, sb, options, 0);
-        return sb.ToString();
+        var o = new Asn1StringSerializerOptions();
+        options(o);
+        return TagToString(tag, o);
     }
 
     /// <summary>
@@ -86,33 +85,36 @@ public static partial class Asn1Serializer
     /// <param name="tag">The ASN.1 tag to convert.</param>
     /// <param name="options">The options for serializing the ASN.1 tag.</param>
     /// <returns>The string representation of the ASN.1 tag.</returns>
-    public static string TagToString(ITag tag, Action<Asn1StringSerializerOptions> options)
+    public static string TagToString(ITag tag, Asn1StringSerializerOptions options)
     {
-        var o = new Asn1StringSerializerOptions();
-        options(o);
-        return TagToString(tag, o);
+        EnsureValidOptions(options);
+        var sb = new StringBuilder();
+        var format = options.StringFormat
+            .Replace("%IndentationString%", "{0}")
+            .Replace("%TagName%", "{1}")
+            .Replace("%TagNameAndContentSeparator%", "{2}")
+            .Replace("%TagContent%", "{3}")
+        ;
+        TagToStringInternal(tag, sb, options, 0, format, new IndentationCache(options.IndentationString));
+        return sb.ToString();
     }
 
-    private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level)
+
+    private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache)
     {
-        var indent = options.IndentationString.Multiply(level);
+        var indent = cache[level];
         var strategy = options.ContentParsingStrategyLocator;
-        var content = GetContentString(tag, options, strategy, options.IndentationString.Multiply(level + 1));
+        var content = GetContentString(tag, options, strategy, cache[level + 1] /*indent + options.IndentationString*/);
         string tagName = !options.IncludeTagNameForContentTags && content.Length != 0 ? "" : tag.TagName;
         var tagNameAndContentSeparator = options.IncludeTagNameForContentTags && content.Length != 0 ? options.TagNameAndContentSeparator : "";
-        var line = options.StringFormat
-            .Replace("%IndentationString%", indent)
-            .Replace("%TagName%", tagName)
-            .Replace("%TagNameAndContentSeparator%", tagNameAndContentSeparator)
-            .Replace("%TagContent%", content);
-        _ = sb.AppendLine(line);
+        _ = sb.AppendFormat(format, indent, tagName, tagNameAndContentSeparator, content);
 
         if (tag.Children.Count > 0)
         {
             foreach (var child in tag.Children)
             {
-                //sb.AppendLine();
-                TagToStringInternal(child, sb, options, level + 1);
+                sb.AppendLine();
+                TagToStringInternal(child, sb, options, level + 1, format, cache);
             }
         }
     }
@@ -125,20 +127,36 @@ public static partial class Asn1Serializer
         if (content.Length <= options.MaximumContentLineLength)
             return content;
         if (options.ContentLengthHandling == ContentLengthHandling.Truncate)
+            //return TruncateString(content, options.TruncateString, options.MaximumContentLineLength);
             return content.Substring(0, (int)options.MaximumContentLineLength - options.TruncateString.Length) + options.TruncateString;
 
-        string s;
-        if (options.ContentLengthHandling == ContentLengthHandling.WordWrap)
+        var s = options.ContentLengthHandling switch
         {
-            s = WordWrapString(options, content, wrappedContentIndentation);
-        }
-        s = WrapString(options, content, wrappedContentIndentation);
-        if (s.Contains(Environment.NewLine))
+            ContentLengthHandling.Wrap => WrapString(options, content, wrappedContentIndentation),
+            ContentLengthHandling.WordWrap => WordWrapString(options, content, wrappedContentIndentation),
+            _ => throw new ArgumentOutOfRangeException(nameof(options.ContentLengthHandling))
+        };
+
+        if (s.AsSpan().Contains(Environment.NewLine.AsSpan(), StringComparison.CurrentCulture)
+            || s.AsSpan().StartsWith(wrappedContentIndentation.AsSpan()))
         {
             s = Environment.NewLine + s;
         }
         return s;
     }
+
+    //private static unsafe string TruncateString(string content, string truncate, int length)
+    //{
+    //    var str = new string(char.MinValue, length + truncate.Length);
+    //    fixed (char* p = str)
+    //    {
+    //        var sp = content.AsSpan();
+    //        var spn = new Span<char>(p, length);
+    //        sp.Slice(0, length).CopyTo(spn);
+    //        truncate.AsSpan().CopyTo(spn.Slice(length));
+    //    }
+    //    return str;
+    //}
 
     private static string WordWrapString(Asn1StringSerializerOptions options, string content, string wrappedContentIndentation)
     {
@@ -183,9 +201,14 @@ public static partial class Asn1Serializer
             int length = Math.Min((int)options.MaximumContentLineLength, content.Length - start);
             if (start != 0)
             {
-                _ = wrappedContent.AppendLine()
-                                  .Append(wrappedContentIndentation)
-                                  .Append(content.Substring(start, length));
+                wrappedContent.AppendLine()
+                              .Append(wrappedContentIndentation)
+                              .Append(content, start, length);
+            }
+            else
+            {
+                wrappedContent.Append(wrappedContentIndentation)
+                              .Append(content, start, length);
             }
             start += length;
         }
@@ -195,16 +218,30 @@ public static partial class Asn1Serializer
 
     private static string Multiply(this string s, int n)
     {
-        if (n == 0)
-            return "";
-        if (n == 1)
-            return s;
-        if (n == 2)
-            return s + s;
-        if (n == 3)
-            return s + s + s;
+        return M(s, n);
+        //return n switch
+        //{
+        //    0 => "",
+        //    1 => s,
+        //    2 => s + s,
+        //    3 => s + s + s,
+        //    _ => M(s, n) //new StringBuilder(s.Length * n).Insert(0, s, n).ToString()
+        //};
 
-        return new StringBuilder().Insert(0, s, n).ToString();
+        static unsafe string M(string s, int n)
+        {
+            var str = new string(char.MinValue, s.Length * n);
+            var sp = s.AsSpan();
+            fixed (char* p = str)
+            {
+                var spn = new Span<char>(p, str.Length);
+                for (int i = 0; i < n; i++)
+                {
+                    sp.CopyTo(spn.Slice(i * s.Length));
+                }
+            }
+            return str;
+        }
     }
 
     private static void EnsureValidOptions(Asn1StringSerializerOptions options)
@@ -220,6 +257,23 @@ public static partial class Asn1Serializer
         if (options.IndentationString is null || options.TagNameAndContentSeparator is null || options.TruncateString is null)
         {
             throw new ArgumentException("IndentationString, TagNameAndContentSeparator and/or TruncateString cannot be null.", nameof(options));
+        }
+    }
+
+    class IndentationCache(string indentationString)
+    {
+        private readonly Dictionary<int, string> _c = [];
+        private readonly string _indentationString = indentationString;
+
+        public string this[int level] => GetIndentationString(level);
+
+        public string GetIndentationString(int level)
+        {
+            if (!_c.TryGetValue(level, out var indentation))
+            {
+                _c[level] = indentation = _indentationString.Multiply(level);
+            }
+            return indentation;
         }
     }
 }
