@@ -3,6 +3,7 @@ using fASN1.NET.Tags;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,13 +18,88 @@ public static partial class Asn1Serializer
     #region Deserialize
 
     /// <summary>
-    /// Deserializes the ASN.1 data from the specified stream.
+    /// Tries to deserialize the ASN.1 data from the specified byte array.
     /// </summary>
-    /// <param name="stream">The stream containing the ASN.1 data.<br/>
-    /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>.
-    /// </param>    
+    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <param name="error">When this method returns <see langword="false"/>, contains the error message; otherwise, <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(byte[] data, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    {
+        return TryDeserialize(data, new DefaultTagFactory(), out tag, out error);
+    }
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified byte array using the specified tag factory.
+    /// </summary>
+    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <param name="error">When this method returns <see langword="false"/>, contains the error message; otherwise, <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    {
+        using var ms = new MemoryStream(data);
+        return TryDeserialize(ms, tagFactory, out tag, out error);
+    }
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified stream.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <param name="error">When this method returns <see langword="false"/>, contains the error message; otherwise, <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(Stream stream, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    {
+        return TryDeserialize(stream, new DefaultTagFactory(), out tag, out error);
+    }
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified stream using the specified tag factory.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <param name="error">When this method returns <see langword="false"/>, contains the error message; otherwise, <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(Stream stream, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            error = null;
+            tag = DeserializeInternal(stream, ref error, tagFactory);
+            return tag is not null;
+        }
+        catch (Exception ex) //just to be safe
+        {
+            tag = null;
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Deserializes the ASN.1 data from the specified byte array.
+    /// </summary>
+    /// <param name="data">The byte array containing the ASN.1 data.</param>    
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream) => Deserialize(stream, out _);
+    public static ITag Deserialize(byte[] data)
+    {
+        return Deserialize(data, new DefaultTagFactory());
+    }
+
+    /// <summary>
+    /// Deserializes the ASN.1 data from the specified byte array using the specified tag factory.
+    /// </summary>
+    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <returns>The deserialized ASN.1 tag.</returns>
+    public static ITag Deserialize(byte[] data, ITagFactory tagFactory)
+    {
+        using var ms = new MemoryStream(data);
+        return Deserialize(ms, tagFactory);
+    }
 
     /// <summary>
     /// Deserializes the ASN.1 data from the specified stream.
@@ -31,11 +107,10 @@ public static partial class Asn1Serializer
     /// <param name="stream">The stream containing the ASN.1 data.<br/>
     /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>.
     /// </param>    
-    /// <param name="error">The error message if the deserialization fails.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream, out string? error)
+    public static ITag Deserialize(Stream stream)
     {
-        return Deserialize(stream, new DefaultTagFactory(), out error);
+        return Deserialize(stream, new DefaultTagFactory());
     }
 
     /// <summary>
@@ -46,21 +121,10 @@ public static partial class Asn1Serializer
     /// </param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory) => Deserialize(stream, tagFactory, out _);
-    
-    /// <summary>
-    /// Deserializes the ASN.1 data from the specified stream using the specified tag factory.
-    /// </summary>
-    /// <param name="stream">The stream containing the ASN.1 data.<br/>
-    /// This stream must have the <see cref="Stream.CanSeek"/> property set to <see langword="true"/>. 
-    /// </param>
-    /// <param name="error">The error message if the deserialization fails.</param>
-    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
-    /// <returns>The deserialized ASN.1 tag.</returns>
-    public static ITag? Deserialize(Stream stream, ITagFactory tagFactory, out string? error)
+    public static ITag Deserialize(Stream stream, ITagFactory tagFactory)
     {
-        error = "";
-        return DeserializeInternal(stream, ref error, tagFactory);
+        string? error = null;
+        return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
     }
 
     private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
@@ -184,9 +248,11 @@ public static partial class Asn1Serializer
             length = stream.Position - start;
             return true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception($"Exception while decoding undefined length content at offset {start}", ex);
+            error = $"Exception while decoding undefined length content at offset {start}";
+            return false;
+            //throw new Exception($"Exception while decoding undefined length content at offset {start}", ex);
         }
     }
 

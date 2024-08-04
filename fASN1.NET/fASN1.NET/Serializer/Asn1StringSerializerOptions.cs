@@ -30,6 +30,7 @@ public sealed class Asn1StringSerializerOptions
 
     /// <summary>
     /// Gets or sets the maximum length of a content line. Default value is <c>128</c>.
+    /// Minimum value when <see cref="ContentLengthHandling"/> is <see cref="ContentLengthHandling.WordWrap"/> is <c>10</c>.
     /// </summary>
     public int MaximumContentLineLength { get; set; } = 128;
 
@@ -42,6 +43,11 @@ public sealed class Asn1StringSerializerOptions
     /// Gets or sets the string used to indicate truncated content. Default value is <c>"..."</c>.
     /// </summary>
     public string TruncateString { get; set; } = "...";
+
+    /// <summary>
+    /// Gets or sets the flag indicating whether or not to convert the BIT_STRING that represents key usage to string values. Default value is <see langword="true"/>.
+    /// </summary>
+    public bool ConvertKeyUsageBitStringToString { get; set; } = true;
 
     /// <summary>
     /// Gets or sets the format string for generating the string representation of a tag.

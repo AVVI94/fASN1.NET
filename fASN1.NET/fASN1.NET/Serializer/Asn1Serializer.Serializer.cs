@@ -93,41 +93,88 @@ public static partial class Asn1Serializer
             .Replace("%IndentationString%", "{0}")
             .Replace("%TagName%", "{1}")
             .Replace("%TagNameAndContentSeparator%", "{2}")
-            .Replace("%TagContent%", "{3}")
-        ;
-        TagToStringInternal(tag, sb, options, 0, format, new IndentationCache(options.IndentationString));
+            .Replace("%TagContent%", "{3}");
+
+        var lastObjectIdentifier = "";
+        TagToStringInternal(tag, sb, options, 0, format, new IndentationCache(options.IndentationString), ref lastObjectIdentifier);
         return sb.ToString();
     }
 
 
-    private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache)
+    private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
     {
         var indent = cache[level];
-        var strategy = options.ContentParsingStrategyLocator;
-        var content = GetContentString(tag, options, strategy, cache[level + 1] /*indent + options.IndentationString*/);
+        var strategyLocator = options.ContentParsingStrategyLocator;
+
+        var content = ProcessContentString(GetContentString(tag,
+                                                            options,
+                                                            lastObjectIdentifier,
+                                                            strategyLocator),
+                                                  options,
+                                                  cache[level + 1] /*indent + options.IndentationString*/);
+
         string tagName = !options.IncludeTagNameForContentTags && content.Length != 0 ? "" : tag.TagName;
         var tagNameAndContentSeparator = options.IncludeTagNameForContentTags && content.Length != 0 ? options.TagNameAndContentSeparator : "";
+
         _ = sb.AppendFormat(format, indent, tagName, tagNameAndContentSeparator, content);
+
+        if (tag.TagNumber == (int)Tag.ObjectIdentifier)
+        {
+            lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
+        }
 
         if (tag.Children.Count > 0)
         {
             foreach (var child in tag.Children)
             {
                 sb.AppendLine();
-                TagToStringInternal(child, sb, options, level + 1, format, cache);
+                TagToStringInternal(child, sb, options, level + 1, format, cache, ref lastObjectIdentifier);
             }
         }
     }
 
-    private static string GetContentString(ITag tag, Asn1StringSerializerOptions options, StrategyLocator strategyLocator, string wrappedContentIndentation)
+    private static string GetContentString(ITag tag, Asn1StringSerializerOptions options, string lastObjectIdentifier, StrategyLocator strategyLocator)
     {
-        var content = tag.ContentToString(strategyLocator);
+        string content;
+        if (options.ConvertKeyUsageBitStringToString
+                    && tag.TagNumber == (int)Tag.BitString
+                    && lastObjectIdentifier == Oid.OID.KEY_USAGE)
+        {
+            var ku = new KeyUsage(ByteToBoolArray(tag.Content[0], out var decOnly),
+                                  false,
+                                  decOnly);
+            content = ku.ToString();
+        }
+        else
+        {
+            content = tag.ContentToString(strategyLocator);
+        }
+
+        return content;
+
+        static bool[] ByteToBoolArray(byte keyUsage, out bool decOnly)
+        {
+            bool[] keyUsages = new bool[8];
+            decOnly = true;
+            
+            for (int i = 0; i < 8; i++)
+            {
+                var k = keyUsages[i] = (keyUsage & (1 << i)) != 0;
+                decOnly &= !k;
+            }
+
+            return keyUsages;
+        }
+    }
+
+    private static string ProcessContentString(string content, Asn1StringSerializerOptions options, string wrappedContentIndentation)
+    {
         if (options.MaximumContentLineLength < 1)
             return content;
         if (content.Length <= options.MaximumContentLineLength)
             return content;
         if (options.ContentLengthHandling == ContentLengthHandling.Truncate)
-            //return TruncateString(content, options.TruncateString, options.MaximumContentLineLength);
+            //return TruncateString(content, options.TruncateString, options.MaximumContentLineLength); - the bottom is faster lol
             return content.Substring(0, (int)options.MaximumContentLineLength - options.TruncateString.Length) + options.TruncateString;
 
         var s = options.ContentLengthHandling switch

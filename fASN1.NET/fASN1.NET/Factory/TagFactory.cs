@@ -58,10 +58,10 @@ public sealed class DefaultTagFactory : ITagFactory
             1 => new Application(tag),
             2 => (tag & 0x1F) switch
             {
-                0 => new ContextSpecific_0(tag),
-                1 => new ContextSpecific_1(tag),
-                2 => new ContextSpecific_2(tag),
-                3 => new ContextSpecific_3(tag),
+                0 => new ContextSpecific_0(),
+                1 => new ContextSpecific_1(),
+                2 => new ContextSpecific_2(),
+                3 => new ContextSpecific_3(),
                 _ => new ContextSpecificTag(tag)
             },
             3 => new Private(tag),
