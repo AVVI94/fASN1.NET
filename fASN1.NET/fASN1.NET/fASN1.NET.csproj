@@ -15,7 +15,7 @@
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<Authors>Jan Král</Authors>
 		<Description>fASN1.NET is a .NET library for working with ASN.1 data. It provides functionality for serializing and deserializing ASN.1 data, as well as extracting various pieces of information from ASN.1 encoded certificates.</Description>
-		<PackageTags>x509;certificates;asn1;asn.1;certificate serialization;serialization;</PackageTags>
+		<PackageTags>ASN1;Serialization;Deserialization;Encoding;Decoding;X509;Certificate;Cryptography;Security;Parser;Binary;Data;DotNet;Library;</PackageTags>
 		<IncludeSymbols>True</IncludeSymbols>
 		<SignAssembly>True</SignAssembly>
 		<AssemblyOriginatorKeyFile>fASN1.NET.snk</AssemblyOriginatorKeyFile>
