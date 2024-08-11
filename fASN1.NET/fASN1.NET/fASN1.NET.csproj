@@ -6,6 +6,9 @@
 		<nullable>enable</nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<Version>1.0</Version>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<RepositoryUrl>https://github.com/AVVI94/fASN1.NET</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/AVVI94/fASN1.NET</PackageProjectUrl>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -17,6 +20,13 @@
 		<SignAssembly>True</SignAssembly>
 		<AssemblyOriginatorKeyFile>fASN1.NET.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Include="..\..\LICENSE">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="System.Memory" Version="4.5.5" />

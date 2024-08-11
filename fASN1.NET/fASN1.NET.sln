@@ -10,7 +10,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{77A4A4B0-11B5-49E7-B2E7-C3B5A465902A}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
-		README.md = README.md
+		..\README.md = ..\README.md
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "fASN1.NET.Benchmark", "fASN1.NET.Benchmark\fASN1.NET.Benchmark.csproj", "{5B5C3C1E-8557-45A2-A63D-770AAE51378C}"
