@@ -7,7 +7,7 @@ public class OctetStringParsingStrategy : IContentParsingStrategy
 {
     private const int SPACE_CHAR_CODE = 32;
     private const int TAB_CHAR_CODE = 9;
-    private const int LF_CHARD_CODE = 10;
+    private const int LF_CHAR_CODE = 10;
     private const int CR_CHAR_CODE = 13;
 
     public string Parse(byte[] content)
@@ -20,7 +20,7 @@ public class OctetStringParsingStrategy : IContentParsingStrategy
             if ((int)c
                 is < SPACE_CHAR_CODE
                 and not TAB_CHAR_CODE
-                and not LF_CHARD_CODE
+                and not LF_CHAR_CODE
                 and not CR_CHAR_CODE)
             {
                 //throw new Exception("Unprintable character");

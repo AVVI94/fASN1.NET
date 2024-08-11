@@ -5,10 +5,21 @@
 		<LangVersion>Latest</LangVersion>
 		<nullable>enable</nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<Version>1.0</Version>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Authors>Jan Král</Authors>
+		<Description>fASN1.NET is a .NET library for working with ASN.1 data. It provides functionality for serializing and deserializing ASN.1 data, as well as extracting various pieces of information from ASN.1 encoded certificates.</Description>
+		<PackageTags>x509;certificates;asn1;asn.1;certificate serialization;serialization;</PackageTags>
+		<IncludeSymbols>True</IncludeSymbols>
+		<SignAssembly>True</SignAssembly>
+		<AssemblyOriginatorKeyFile>fASN1.NET.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <PackageReference Include="System.Memory" Version="4.5.5" />
+		<PackageReference Include="System.Memory" Version="4.5.5" />
 	</ItemGroup>
 
 </Project>

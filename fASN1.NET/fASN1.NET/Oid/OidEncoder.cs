@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace fASN1.NET.Oid;
 
@@ -87,11 +85,26 @@ public static class OidEncoder
         int bufferValue = 0;
         bool isBuffering = false;
 
-        // Process the first byte separately as it encodes the first two OID numbers
+        // The numerical value of the first subidentifier is derived from the values of the first two object identifier
+        // components in the object identifier value being encoded, using the formula:
+        // (X * 40) + Y
+        // where X is the value of the first object identifier component and Y is the value of the second object identifier
+        // component.
+        // NOTE – This packing of the first two object identifier components recognizes that only three values are allocated from the root
+        // node, and at most 39 subsequent values from nodes reached by X = 0 and X = 1.
         int firstByte = bytes[0];
-        _ = oid.Append(firstByte / 40)
-               .Append('.')
-               .Append(firstByte % 40);
+        if (firstByte > 79)
+        {
+            _ = oid.Append(2)
+                   .Append('.')
+                   .Append(firstByte - 80);
+        }
+        else
+        {
+            _ = oid.Append(firstByte / 40)
+                   .Append('.')
+                   .Append(firstByte % 40);
+        }
 
         for (int i = 1; i < bytes.Length; i++)
         {

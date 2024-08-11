@@ -1,12 +1,9 @@
-﻿using fASN1.NET.Factory;
-using fASN1.NET.Tags;
-using System;
-using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
-using System.Text;
+using fASN1.NET.Factory;
+using fASN1.NET.Tags;
 
 namespace fASN1.NET;
 
@@ -68,6 +65,12 @@ public static partial class Asn1Serializer
         try
         {
             error = null;
+            if (stream is null or { Length: 0 })
+            {
+                error = "Stream is null or empty.";
+                tag = null;
+                return false;
+            }
             tag = DeserializeInternal(stream, ref error, tagFactory);
             return tag is not null;
         }
@@ -124,6 +127,8 @@ public static partial class Asn1Serializer
     public static ITag Deserialize(Stream stream, ITagFactory tagFactory)
     {
         string? error = null;
+        if (stream is null or { Length: 0 })
+            throw new Asn1DeserializationException("Stream is null or empty.");
         return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
     }
 
