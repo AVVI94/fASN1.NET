@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Text;
+﻿using System.Text;
 
 namespace fASN1.NET.ContentParsing;
 public class IsoStringParsingStrategy : IContentParsingStrategy

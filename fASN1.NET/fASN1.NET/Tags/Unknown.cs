@@ -2,7 +2,7 @@
 
 namespace fASN1.NET.Tags;
 
-public class Unknown: ITag
+public class Unknown : ITag
 {
     public Unknown(int tagNumber, byte[]? content = null, List<ITag>? children = null)
     {

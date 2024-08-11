@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using fASN1.NET;
-
-namespace fASN1.NET.Tests;
+﻿namespace fASN1.NET.Tests;
 public class ExtensionsTests
 {
     [Fact]
@@ -109,7 +102,7 @@ public class ExtensionsTests
         Assert.Single(items);
         Assert.Equal("I.CA Test EU Qualified CA2/RSA 04/2022", items[0]);
     }
-    
+
     [Fact]
     public void TryGetCertificateSubjectItem_ReturnsCommonNameForSubject()
     {
@@ -122,7 +115,7 @@ public class ExtensionsTests
         Assert.Single(items);
         Assert.Equal("Testovaci TwinsOpra", items[0]);
     }
-    
+
     [Fact]
     public void TryGetCertificateSubjectItem_ReturnsOrganizationNameForIssuer()
     {
@@ -135,7 +128,7 @@ public class ExtensionsTests
         Assert.Single(items);
         Assert.Equal("První certifikační autorita, a.s.", items[0]);
     }
-    
+
     [Fact]
     public void TryGetCertificateSubjectItem_ReturnsOrganizationIdentifierForIssuer()
     {
@@ -148,7 +141,7 @@ public class ExtensionsTests
         Assert.Single(items);
         Assert.Equal("NTRCZ-26439395", items[0]);
     }
-    
+
     [Fact]
     public void TryGetCertificateSubjectItem_ReturnsCountryNameForIssuer()
     {
@@ -173,7 +166,7 @@ public class ExtensionsTests
         Assert.True(ok);
         Assert.Equal(new DateTime(2024, 7, 3, 19, 03, 27, DateTimeKind.Utc), notBefore);
     }
-    
+
     [Fact]
     public void TryGetCertificateNotBefore_ReturnsNotAfter()
     {

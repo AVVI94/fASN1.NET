@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace fASN1.NET.Tags;
+﻿namespace fASN1.NET.Tags;
 
 public enum Tag
 {

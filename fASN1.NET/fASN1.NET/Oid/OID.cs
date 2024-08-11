@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace fASN1.NET.Oid;
 
@@ -132,7 +129,9 @@ public class OID
     /// <summary>
     /// Dictionary of existing common OID objects, the key is OID string for example "2.5.29.29"
     /// </summary>
-    public static Dictionary<string, OID> OidDictionary { get => _oidDictionary ??= new Dictionary<string, OID>(){
+    public static Dictionary<string, OID> OidDictionary
+    {
+        get => _oidDictionary ??= new Dictionary<string, OID>(){
 {"0.2.262.1.10",new OID("0.2.262.1.10","Telesec","Deutsche Telekom")},
 {"0.2.262.1.10.0",new OID("0.2.262.1.10.0","extension","Telesec")},
 {"0.2.262.1.10.1",new OID("0.2.262.1.10.1","mechanism","Telesec")},
@@ -2473,5 +2472,6 @@ public class OID
 {"1.3.6.1.4.1.23624.10.1.90.1.1",new OID("1.3.6.1.4.1.23624.10.1.90.1.1","I.CA Qualified Certificates SK for Electronic Signatures","")},
 {"1.3.6.1.4.1.23624.10.1.70.1.1",new OID("1.3.6.1.4.1.23624.10.1.70.1.1","I.CA Commercial Certificates","I.CA Public CA/RSA 07/2015")},
 {ICA_CERT_INTERCONNECTION,new OID(ICA_CERT_INTERCONNECTION,"I.CA_CERT_INTERCONNECTION","")},
-{"2.6.840.1.113730.1.13",new OID("2.6.840.1.113730.1.13","QSCD identification number","SmartCard Number")}}; }
+{"2.6.840.1.113730.1.13",new OID("2.6.840.1.113730.1.13","QSCD identification number","SmartCard Number")}};
+    }
 }

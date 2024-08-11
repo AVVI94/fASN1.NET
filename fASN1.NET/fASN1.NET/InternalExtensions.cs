@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using fASN1.NET.ContentParsing;
 using fASN1.NET.Oid;
 using fASN1.NET.Tags;

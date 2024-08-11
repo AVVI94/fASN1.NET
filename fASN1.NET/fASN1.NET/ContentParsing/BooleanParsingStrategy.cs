@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace fASN1.NET.ContentParsing;
+﻿namespace fASN1.NET.ContentParsing;
 public class BooleanParsingStrategy : IContentParsingStrategy
 {
     public string Parse(byte[] content)

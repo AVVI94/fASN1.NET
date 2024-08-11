@@ -156,7 +156,7 @@ public static partial class Asn1Serializer
         {
             bool[] keyUsages = new bool[8];
             decOnly = true;
-            
+
             for (int i = 0; i < 8; i++)
             {
                 var k = keyUsages[i] = (keyUsage & (1 << i)) != 0;

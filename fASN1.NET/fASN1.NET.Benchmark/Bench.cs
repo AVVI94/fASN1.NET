@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using BenchmarkDotNet.Attributes;
+﻿using BenchmarkDotNet.Attributes;
 using fASN1.NET.Tags;
 
 namespace fASN1.NET.Benchmark;
@@ -31,12 +26,12 @@ public class Bench
         _certReqTag = fASN1.NET.Asn1Serializer.Deserialize(ms2);
     }
 
-    [Benchmark]
-    public ITag DeserializeCertificate()
-    {
-        using var ms = new MemoryStream(_certData);
-        return fASN1.NET.Asn1Serializer.Deserialize(ms);
-    }
+    //[Benchmark]
+    //public ITag DeserializeCertificate()
+    //{
+    //    using var ms = new MemoryStream(_certData);
+    //    return fASN1.NET.Asn1Serializer.Deserialize(ms);
+    //}
 
     //[Benchmark]
     //public ITag DeserializeCertificateRequest()
