@@ -109,7 +109,7 @@ var deserializedText = Asn1Serializer.TagToString(deserializedTag);
 Console.WriteLine(deserializedText);
 ```
 
-The data looks like this after deserialization into a string:
+The data looks like this after serialization into a string:
 
 ```asn1
 Sequence
@@ -122,7 +122,6 @@ Sequence
 ```
 
 ## Performance
-
 
 The following table shows the performance of the current implementation when working with certificates.
 
