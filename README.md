@@ -1,6 +1,6 @@
 # fASN1.NET
 
-![Nuget](https://img.shields.io/nuget/v/fASN1.NET) ![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)
+[![Nuget](https://img.shields.io/nuget/v/fASN1.NET)](https://www.nuget.org/packages/fASN1.NET) [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://raw.githubusercontent.com/AVVI94/fASN1.NET/master/LICENSE)
 
 fASN1.NET is a .NET library for working with ASN.1 (Abstract Syntax Notation One) data. It provides functionality for serializing and deserializing ASN.1 data, as well as extracting various pieces of information from ASN.1 encoded certificates.
 
