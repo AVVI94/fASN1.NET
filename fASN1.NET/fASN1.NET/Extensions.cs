@@ -73,10 +73,10 @@ public static partial class Extensions
         eku = new ExtendedKeyUsage();
         try
         {
-            if (!IsCertificate(certificateTag) || !HasCertExtensions(certificateTag))
+            if (!IsCertificate(certificateTag) || !HasCertExtensionsInternal(certificateTag))
                 return false;
             bool ekuFound = false;
-            foreach (var ext in GetCretificateExtensions(certificateTag))
+            foreach (var ext in GetCretificateExtensionsInternal(certificateTag))
             {
                 if (!ext.Children[0].Content.SequenceEqual(_extKeyUsageSequence))
                     continue;
@@ -127,9 +127,9 @@ public static partial class Extensions
     public static bool TryGetICACertIntercon(this ITag certificate, out ICACertIntercon intercon)
     {
         intercon = default;
-        if (!IsCertificate(certificate) || !HasCertExtensions(certificate))
+        if (!IsCertificate(certificate) || !HasCertExtensionsInternal(certificate))
             return false;
-        var ext = GetCretificateExtensions(certificate);
+        var ext = GetCretificateExtensionsInternal(certificate);
         foreach (var item in ext)
         {
             if (OID.GetOrCreate(item.Children[0].Content).Value != OID.ICA_CERT_INTERCONNECTION)
@@ -230,9 +230,9 @@ public static partial class Extensions
         {
             if (IsCertificate(tag))
             {
-                if (!HasCertExtensions(tag))
+                if (!HasCertExtensionsInternal(tag))
                     return false;
-                foreach (var item in GetCretificateExtensions(tag))
+                foreach (var item in GetCretificateExtensionsInternal(tag))
                 {
                     if (!item.Children[0].Content.SequenceEqual(_sanOidSequence))
                         continue;
@@ -342,6 +342,92 @@ public static partial class Extensions
                 return false;
             notBefore = DateTime.Parse(tag.Children[0].Children[4].Children[0].ContentToString());
             return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to get the X.509 Certificate v3 extensions.
+    /// </summary>
+    /// <param name="tag">The certificate asn1 data.</param>
+    /// <param name="extensions">The extensions <see cref="ITag"/> collection.</param>
+    /// <returns>
+    /// <see langword="true"/> if the extensions were found; otherwise, <see langword="false"/>.
+    /// </returns>
+    public static bool TryGetCertificateExtensions(this ITag tag, out IList<ITag> extensions)
+    {
+        extensions = [];
+        try
+        {
+            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+                return false;
+            extensions = GetCretificateExtensionsInternal(tag);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to get the Authority Key Identifier from the specified X.509v3 certificate tag.
+    /// </summary>
+    /// <param name="tag">The certificate tag to check.</param>
+    /// <param name="authorityKeyIdentifier">The Authority Key Identifier string.</param>
+    /// <returns><see langword="true"/> if the Authority Key Identifier was found; otherwise, <see langword="false"/>.</returns>
+    public static bool TryGetAuthorityKeyIdentifier(this ITag tag, out string? authorityKeyIdentifier)
+    {
+        authorityKeyIdentifier = null;
+        try
+        {
+            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+                return false;
+
+            foreach (var ext in GetCretificateExtensionsInternal(tag))
+            {
+                if (!ext.Children[0].Content.SequenceEqual(_authorityKeyIdentifierOidSequence))
+                    continue;
+
+                var akid = ext.Children[1].Children[0].Children[0];
+                authorityKeyIdentifier = akid.ContentToString();
+                return true;
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to get the Subject Key Identifier from the specified X.509v3 certificate tag.
+    /// </summary>
+    /// <param name="tag">The certificate tag to check.</param>
+    /// <param name="subjectKeyIdentifier">The Subject Key Identifier string.</param>
+    /// <returns><see langword="true"/> if the Subject Key Identifier was found; otherwise, <see langword="false"/>.</returns>
+    public static bool TryGetSubjectKeyIdentifier(this ITag tag, out string? subjectKeyIdentifier)
+    {
+        subjectKeyIdentifier = null;
+        try
+        {
+            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+                return false;
+
+            foreach (var ext in GetCretificateExtensionsInternal(tag))
+            {
+                if (!ext.Children[0].Content.SequenceEqual(_subjectKeyIdentifierOidSequence))
+                    continue;
+
+                var skid = ext.Children[1].Children[0];
+                subjectKeyIdentifier = skid.ContentToString();
+                return true;
+            }
+            return false;
         }
         catch
         {

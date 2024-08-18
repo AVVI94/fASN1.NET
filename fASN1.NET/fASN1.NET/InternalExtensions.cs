@@ -19,19 +19,21 @@ internal static class InternalExtensions
     public static readonly byte[] _icaIkMpsvSequence = OID.GetOrCreate(OID.ICA_IK_MPSV).ByteValue;
     public static readonly byte[] _extensionRequestSequence = OID.GetOrCreate(OID.EXTENSION_REQUEST).ByteValue;
     public static readonly byte[] _extKeyUsageSequence = OID.GetOrCreate(OID.EXT_KEY_USAGE).ByteValue;
+    public static readonly byte[] _authorityKeyIdentifierOidSequence = OID.GetOrCreate(OID.AUTHORITY_KEY_IDENTIFIER).ByteValue;
+    public static readonly byte[] _subjectKeyIdentifierOidSequence = OID.GetOrCreate(OID.SUBJECT_KEY_IDENTIFIER).ByteValue;
 
     public static bool HasRequestedExtensions(ITag topLevelCertRequestTag)
     {
-        return topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1].TagName == "[0]"
+        return topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1].TagNumber == 160
                 && topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1]
                               .Children[0].Children[0].Content.SequenceEqual(_extensionRequestSequence);
     }
-    public static bool HasCertExtensions(ITag topLevelCertificateTag)
+    public static bool HasCertExtensionsInternal(ITag topLevelCertificateTag)
     {
-        return topLevelCertificateTag.Children[0].Children[topLevelCertificateTag.Children[0].Children.Count - 1].TagName == "[3]";
+        return topLevelCertificateTag.Children[0].Children[topLevelCertificateTag.Children[0].Children.Count - 1].TagNumber == 163;
     }
 
-    public static IList<ITag> GetCretificateExtensions(ITag topLevelTag)
+    public static IList<ITag> GetCretificateExtensionsInternal(ITag topLevelTag)
     {
         return topLevelTag.Children[0].Children[topLevelTag.Children[0].Children.Count - 1].Children[0].Children;
     }

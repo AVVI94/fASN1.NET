@@ -39,6 +39,8 @@ public class OID
     public const string ORGANIZATION_IDENTIFIER = "2.5.4.97";
     public const string STREET_ADDRESS = "2.5.4.9";
     public const string POSTAL_CODE = "2.5.4.17";
+    public const string AUTHORITY_KEY_IDENTIFIER = "2.5.29.35";
+    public const string SUBJECT_KEY_IDENTIFIER = "2.5.29.14";
 #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 
 
@@ -1935,7 +1937,7 @@ public class OID
 {"2.5.29.11",new OID("2.5.29.11","nameConstraints","X.509 extension.  Deprecated use 2 5 29 30 instead")},
 {"2.5.29.12",new OID("2.5.29.12","policyConstraints","X.509 extension.  Deprecated use 2 5 29 36 instead")},
 {"2.5.29.13",new OID("2.5.29.13","basicConstraints","X.509 extension.  Deprecated use 2 5 29 19 instead")},
-{"2.5.29.14",new OID("2.5.29.14","subjectKeyIdentifier","X.509 extension")},
+{SUBJECT_KEY_IDENTIFIER,new OID(SUBJECT_KEY_IDENTIFIER,"subjectKeyIdentifier","X.509 extension")},
 {KEY_USAGE,new OID(KEY_USAGE,"keyUsage","X.509 extension")},
 {"2.5.29.16",new OID("2.5.29.16","privateKeyUsagePeriod","X.509 extension")},
 {SUBJECT_ALT_NAME,new OID(SUBJECT_ALT_NAME,"subjectAltName","X.509 extension")},
@@ -1957,7 +1959,7 @@ public class OID
 {"2.5.29.32.0",new OID("2.5.29.32.0","anyPolicy","X.509 certificate policy")},
 {"2.5.29.33",new OID("2.5.29.33","policyMappings","X.509 extension")},
 {"2.5.29.34",new OID("2.5.29.34","policyConstraints","X.509 extension.  Deprecated use 2 5 29 36 instead")},
-{"2.5.29.35",new OID("2.5.29.35","authorityKeyIdentifier","X.509 extension")},
+{AUTHORITY_KEY_IDENTIFIER,new OID(AUTHORITY_KEY_IDENTIFIER,"authorityKeyIdentifier","X.509 extension")},
 {"2.5.29.36",new OID("2.5.29.36","policyConstraints","X.509 extension")},
 {EXT_KEY_USAGE,new OID(EXT_KEY_USAGE,"extKeyUsage","X.509 extension")},
 {"2.5.29.37.0",new OID("2.5.29.37.0","anyExtendedKeyUsage","X.509 extended key usage")},

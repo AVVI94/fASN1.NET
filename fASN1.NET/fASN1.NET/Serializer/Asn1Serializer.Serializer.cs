@@ -100,7 +100,6 @@ public static partial class Asn1Serializer
         return sb.ToString();
     }
 
-
     private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
     {
         var indent = cache[level];

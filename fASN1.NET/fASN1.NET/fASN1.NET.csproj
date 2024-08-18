@@ -9,7 +9,8 @@
 		<RepositoryUrl>https://github.com/AVVI94/fASN1.NET</RepositoryUrl>
 		<PackageProjectUrl>https://github.com/AVVI94/fASN1.NET</PackageProjectUrl>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
-		<Version>1.0.1</Version>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<Version>1.1</Version>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">

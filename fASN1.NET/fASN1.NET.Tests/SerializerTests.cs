@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using fASN1.NET.Tags;
 
@@ -63,6 +64,103 @@ public class SerializerTests
         Assert.True(result.IsCertificateRequest());
         var js = JsonSerializer.Serialize(result);
         Assert.Equal(jsonResult, js);
+    }
+
+    [Fact]
+    public void Deserialize_ShouldDeserializeSkid()
+    {
+        var crt = X509Certificate2.CreateFromPem("""
+                        -----BEGIN CERTIFICATE-----
+            MIIGITCCBAmgAwIBAgIDAai2MA0GCSqGSIb3DQEBCwUAMH8xKDAmBgNVBAMMH0k
+            uQ0EgVGVzdCBQdWJsaWMgQ0EvUlNBIDA0LzIwMjIxLTArBgNVBAoMJFBydm7DrS
+            BjZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRSQ1otM
+            jY0MzkzOTUxCzAJBgNVBAYTAkNaMB4XDTIzMDgxNjIwMjEwMVoXDTI0MDgxNTIw
+            MjEwMVowgYMxDTALBgNVBAoMBHRlc3QxGDAWBgNVBGEMD05UUkNaLTEyMzQ1Njc
+            5ODEmMCQGA1UECwwdU2x1xb5iYSBwZcSNZXTEm27DrSBuYSBkw6Fsa3UxDTALBg
+            NVBAMMBHRlc3QxCzAJBgNVBAYTAkNaMRQwEgYDVQQFEwtJQ0EgLSA5NDAwNTCCA
+            SIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJrFOtoABCuuZvMYe2q9lgUV
+            BH13z/rTJvX0X+eX3K+PLcCOPS2E5dY0R/6XDfn4Io3YcfJ+i+vbmgdqen0VXNO
+            pDI48o7UZ0MTOQqZ11eqOg59E6Z1SSq2bo4DV7E8ymHTPAbJ5NMiUv4OIhSj2D7
+            b0idsKfM//r4MWFH22cmIGQGw2de+ToDydEiinD+MqF+GU6Xcn4a7ZuQKi6AfZD
+            oI6wzfuR3A+AK9tzPnlJCvA++SE/r2AqMKYqu2GJjYytlTEqw3ZTuVxtmVMHEyA
+            udHE8EwaYRdF94XSkaDunQE0KlbcZlgBwxkLOcl1G4TPkdQIliMo+wGt9zYjqbj
+            P+lkCAwEAAaOCAZ8wggGbMB8GCWCGSAGG+EIBDQQSFhA5MjAzNTUwMDAwMDAwNT
+            I5MCAGA1UdEQQZMBegFQYKKwYBBAGBuEgEBqAHDAU5NDAwNTAOBgNVHQ8BAf8EB
+            AMCBaAwRQYDVR0gBD4wPDAwBg0rBgEEAYG4SAoDRwEBMB8wHQYIKwYBBQUHAgEW
+            EWh0dHA6Ly93d3cuaWNhLmN6MAgGBgQAj3oBATAzBgNVHR8ELDAqMCigJqAkhiJ
+            odHRwOi8vdGVzdHMuaWNhLmN6L3RwY2EyMl9yc2EuY3JsMGoGCCsGAQUFBwEBBF
+            4wXDAuBggrBgEFBQcwAoYiaHR0cDovL3Rlc3RzLmljYS5jei90cGNhMjJfcnNhL
+            mNlcjAqBggrBgEFBQcwAYYeaHR0cDovL3RvY3NwLmljYS5jei90cGNhMjJfcnNh
+            MAkGA1UdEwQCMAAwHwYDVR0jBBgwFoAUZaEc+pLhCvZMhevyM9phYkEEGeswHQY
+            DVR0OBBYEFMonCu7U6eiz1U7KAa6q2KRfx91FMBMGA1UdJQQMMAoGCCsGAQUFBw
+            MCMA0GCSqGSIb3DQEBCwUAA4ICAQAPdmZDIUFjXppfDP9TIJQH0JqoaVJ6aUhdg
+            SzJ+sHv1UiQYO6zbRWdbEYDkIhV5d0PRd02N1pMQi9Q043lUHf0T5Y8NJ48FO2Y
+            iX4enzi3A42VSvkcy/aSLtkxPw3vtEKsxpuQXOPFetqXKlWceheNJbV9wfccuUn
+            YIovVP9KaGBmoz10dh2/kuVsqOhSpsOVMqB7Gp5/dbCIqt4RF3i0stlq4lfi4Ib
+            nPpr+auZSdNfS62MoTLE0YABp5by4/f+85AcAJdvfYi7mq9GXNa/vKB3l6Uwlbm
+            /hLzGGe0kpomilBbf+4UqvWxrggFaH1EETZACv2EkFAeDRLgzJxsm+sUjWw81Bq
+            kiiGlQhZVLVDGwIKMf6Ja5hYfRGBUzs5nCt8foxWb+T5E1mOLlxuV1lJFbQjBXw
+            LjVyuMmxV1DKxL/GxaojEX2NRaFhLeCsbeSV9GsUOdrIsUL8OOx5fOoag3s3bKm
+            VWThuuk+VzwSEMoKUpvz8RiLTRjA50d5VasdLh5pnoLgODHfu3BaQQHupTr32iV
+            XCDBXlZjEwkHNxEgJd0MqE1i+ZnyCL2RY9V9No2P2zv1oqqSyPwLszh/IfpHMsf
+            DRyHmhcSNHumEZ+GXHG6VEWfPbO49BknP9VqiN2F9iKe1vkzUH0aB2hhJB06cOi
+            /397nqcveDghQrsr+OQ==
+            -----END CERTIFICATE-----
+            """);
+        var ext = crt.Extensions["2.5.29.14"];
+        var data = Asn1Serializer.Deserialize(ext!.RawData);
+        Assert.NotNull(data);
+        var str = Asn1Serializer.TagToString(data, x => x.IncludeTagNameForContentTags = false);
+        Assert.Equal("CA270AEED4E9E8B3D54ECA01AEAAD8A45FC7DD45", str, true);
+    }
+    
+    [Fact]
+    public void Deserialize_ShouldDeserializeAkid()
+    {
+        var crt = X509Certificate2.CreateFromPem("""
+                        -----BEGIN CERTIFICATE-----
+            MIIGITCCBAmgAwIBAgIDAai2MA0GCSqGSIb3DQEBCwUAMH8xKDAmBgNVBAMMH0k
+            uQ0EgVGVzdCBQdWJsaWMgQ0EvUlNBIDA0LzIwMjIxLTArBgNVBAoMJFBydm7DrS
+            BjZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRSQ1otM
+            jY0MzkzOTUxCzAJBgNVBAYTAkNaMB4XDTIzMDgxNjIwMjEwMVoXDTI0MDgxNTIw
+            MjEwMVowgYMxDTALBgNVBAoMBHRlc3QxGDAWBgNVBGEMD05UUkNaLTEyMzQ1Njc
+            5ODEmMCQGA1UECwwdU2x1xb5iYSBwZcSNZXTEm27DrSBuYSBkw6Fsa3UxDTALBg
+            NVBAMMBHRlc3QxCzAJBgNVBAYTAkNaMRQwEgYDVQQFEwtJQ0EgLSA5NDAwNTCCA
+            SIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJrFOtoABCuuZvMYe2q9lgUV
+            BH13z/rTJvX0X+eX3K+PLcCOPS2E5dY0R/6XDfn4Io3YcfJ+i+vbmgdqen0VXNO
+            pDI48o7UZ0MTOQqZ11eqOg59E6Z1SSq2bo4DV7E8ymHTPAbJ5NMiUv4OIhSj2D7
+            b0idsKfM//r4MWFH22cmIGQGw2de+ToDydEiinD+MqF+GU6Xcn4a7ZuQKi6AfZD
+            oI6wzfuR3A+AK9tzPnlJCvA++SE/r2AqMKYqu2GJjYytlTEqw3ZTuVxtmVMHEyA
+            udHE8EwaYRdF94XSkaDunQE0KlbcZlgBwxkLOcl1G4TPkdQIliMo+wGt9zYjqbj
+            P+lkCAwEAAaOCAZ8wggGbMB8GCWCGSAGG+EIBDQQSFhA5MjAzNTUwMDAwMDAwNT
+            I5MCAGA1UdEQQZMBegFQYKKwYBBAGBuEgEBqAHDAU5NDAwNTAOBgNVHQ8BAf8EB
+            AMCBaAwRQYDVR0gBD4wPDAwBg0rBgEEAYG4SAoDRwEBMB8wHQYIKwYBBQUHAgEW
+            EWh0dHA6Ly93d3cuaWNhLmN6MAgGBgQAj3oBATAzBgNVHR8ELDAqMCigJqAkhiJ
+            odHRwOi8vdGVzdHMuaWNhLmN6L3RwY2EyMl9yc2EuY3JsMGoGCCsGAQUFBwEBBF
+            4wXDAuBggrBgEFBQcwAoYiaHR0cDovL3Rlc3RzLmljYS5jei90cGNhMjJfcnNhL
+            mNlcjAqBggrBgEFBQcwAYYeaHR0cDovL3RvY3NwLmljYS5jei90cGNhMjJfcnNh
+            MAkGA1UdEwQCMAAwHwYDVR0jBBgwFoAUZaEc+pLhCvZMhevyM9phYkEEGeswHQY
+            DVR0OBBYEFMonCu7U6eiz1U7KAa6q2KRfx91FMBMGA1UdJQQMMAoGCCsGAQUFBw
+            MCMA0GCSqGSIb3DQEBCwUAA4ICAQAPdmZDIUFjXppfDP9TIJQH0JqoaVJ6aUhdg
+            SzJ+sHv1UiQYO6zbRWdbEYDkIhV5d0PRd02N1pMQi9Q043lUHf0T5Y8NJ48FO2Y
+            iX4enzi3A42VSvkcy/aSLtkxPw3vtEKsxpuQXOPFetqXKlWceheNJbV9wfccuUn
+            YIovVP9KaGBmoz10dh2/kuVsqOhSpsOVMqB7Gp5/dbCIqt4RF3i0stlq4lfi4Ib
+            nPpr+auZSdNfS62MoTLE0YABp5by4/f+85AcAJdvfYi7mq9GXNa/vKB3l6Uwlbm
+            /hLzGGe0kpomilBbf+4UqvWxrggFaH1EETZACv2EkFAeDRLgzJxsm+sUjWw81Bq
+            kiiGlQhZVLVDGwIKMf6Ja5hYfRGBUzs5nCt8foxWb+T5E1mOLlxuV1lJFbQjBXw
+            LjVyuMmxV1DKxL/GxaojEX2NRaFhLeCsbeSV9GsUOdrIsUL8OOx5fOoag3s3bKm
+            VWThuuk+VzwSEMoKUpvz8RiLTRjA50d5VasdLh5pnoLgODHfu3BaQQHupTr32iV
+            XCDBXlZjEwkHNxEgJd0MqE1i+ZnyCL2RY9V9No2P2zv1oqqSyPwLszh/IfpHMsf
+            DRyHmhcSNHumEZ+GXHG6VEWfPbO49BknP9VqiN2F9iKe1vkzUH0aB2hhJB06cOi
+            /397nqcveDghQrsr+OQ==
+            -----END CERTIFICATE-----
+            """);
+        var ext = crt.Extensions["2.5.29.35"];
+        var fuckme = ext.Format(true);
+        var data = Asn1Serializer.Deserialize(ext!.RawData);
+        Assert.NotNull(data);
+        var str = Asn1Serializer.TagToString(data.Children[0], x => x.IncludeTagNameForContentTags = false);
+        Assert.Equal("65A11CFA92E10AF64C85EBF233DA6162410419EB", str, true);
     }
 
     [Fact]

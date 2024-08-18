@@ -199,6 +199,12 @@ public static partial class Asn1Serializer
             }
             //var position = stream.Position;
             var content = new byte[length.Value];
+            if (length.Value > stream.Length - stream.Position)
+            {
+                error = $"Content size is not correct for tag {tag.TagName} at offset {start}";
+                return null;
+                //throw new InvalidDataException($"Content size is not correct for tag {tag.TagName} at offset {start}");
+            }
             _ = stream.Read(content, 0, (int)length.Value);
             tag.Content = content;
         }
