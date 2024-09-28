@@ -46,12 +46,7 @@ public class SerializerTests
     {
         // Arrange
         var stream = new MemoryStream();
-
-        // Act
-        var result = Asn1Serializer.Deserialize(stream);
-
-        // Assert
-        Assert.Null(result);
+        Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(stream));
     }
 
     [Theory]
@@ -113,7 +108,7 @@ public class SerializerTests
         var str = Asn1Serializer.TagToString(data, x => x.IncludeTagNameForContentTags = false);
         Assert.Equal("CA270AEED4E9E8B3D54ECA01AEAAD8A45FC7DD45", str, true);
     }
-    
+
     [Fact]
     public void Deserialize_ShouldDeserializeAkid()
     {
@@ -361,6 +356,20 @@ public class SerializerTests
         });
         Assert.NotNull(serialized);
 
+    }
+
+    [Fact]
+    public void TagToBytes_ShouldSerializeExactlyAsWas()
+    {
+        var pem = "MIIC9jCCAd4CAQAwYzEUMBIGA1UEAwwLdGVzdC5pY2EuY3oxDjAMBgNVBAcMBVByYWhhMQswCQYDVQQGEwJDWjERMA8GA1UECgwIT3JnIGEucy4xCzAJBgNVBAkMAjQyMQ4wDAYDVQQRDAUzMDAwMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMnsxv1KewfQ3GBw9nxED/aM2JTFMf2i01PbB8L2ugdwyY0vei70k0fundw/s+ZLSGU7EoONyFUe+bftm83p/PsYsq4+ANlbRSAd1eTp0RF3A5hdvc95rscthVt+RAzOsjRrisLCZ9+QwystsAonLcOIktd7F9fZbw9DE7Qjwsl+fQMJK5fJrLMC/kso+6R2sl0LEnLEtxjzoOwWHkRwDm8Fq84m5eu9vW2KIF3maH1K59pm+D6EgyALZvB3dYESzV4HAfXQl1HlkQXDORqcm1/z2r3OCzaCy+2KD0EojEw8D9vujs+NzhIxhRAQPIWMgetIQgzuW11suXJpg+vDYdkCAwEAAaBOMEwGCSqGSIb3DQEJDjE/MD0wFgYDVR0RBA8wDYILdGVzdC5pY2EuY3owDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IBAQAMSK/VccjUr/6xIQWUVyWj0zb9UeUYsY2pfpeDuWTKvHpOy4MqBrKjdCS7Md26grBhkHoMvCT1QVp16tGJ4UmvjSI5yTUeW/5OQGOaz3quGHAl35bclEbBx+nIx1pBPZckaHLU38tB4Q4J4ikUx/seqU1h3+K5vmdAyv+VLDX0CuOF3wO8xQk2cwKm1RDUklt7C9AmsTe3IgndmJCSKs86vIO2l0r2wpCFWrO+zE1f9Ag9gPYC66relqxf4UISTdKfgBrfp703SVSfGl5o69SEhURR/9wJjR6yvknxCG4+fG1lfySqioEHVLwXQHk9OKQVZ0Tt5GjL41V7EdLBJJGd";
+        var stream = new MemoryStream(Convert.FromBase64String(pem));
+        var tag = Asn1Serializer.Deserialize(stream);
+        Assert.NotNull(tag);
+        var serialized = Asn1Serializer.Serialize(tag);
+        Assert.NotNull(serialized);
+        var pem2 = Convert.ToBase64String(serialized);
+        Console.WriteLine(pem2);
+        Assert.Equal(pem2, pem);
     }
 }
 // Mock implementation of ITag for testing purposes

@@ -5,9 +5,9 @@ namespace fASN1.NET.Tags;
 
 public class ContextSpecific_1 : ITag
 {
-    public ContextSpecific_1(byte[]? content = null, IList<ITag>? children = null)
+    public ContextSpecific_1(int tagNumber, byte[]? content = null, IList<ITag>? children = null)
     {
-        TagNumber = 161;
+        TagNumber = tagNumber;
         TagName = $"[1]";
         Content = content ?? [];
         Children = children ?? new List<ITag>();
