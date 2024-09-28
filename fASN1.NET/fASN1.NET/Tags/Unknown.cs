@@ -20,4 +20,5 @@ public class Unknown : ITag
     public bool IsEoc => TagClass == 0x00 && TagNumber == 0x00;
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

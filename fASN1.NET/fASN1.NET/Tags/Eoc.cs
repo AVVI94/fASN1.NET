@@ -18,4 +18,5 @@ public class Eoc : ITag
     public bool IsEoc { get; } = true;
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

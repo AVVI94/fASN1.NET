@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
 
 
 namespace fASN1.NET.Tags;
@@ -10,6 +12,16 @@ public class GeneralizedTime : ITag
         Content = content ?? [];
         Children = children ?? new List<ITag>();
     }
+    public GeneralizedTime(DateTime time)
+    {
+        var val = time.ToString("yyyyMMddHHmmss.f");
+        if (time.Kind == DateTimeKind.Utc)
+        {
+            val += "Z";
+        }
+        Content = Encoding.ASCII.GetBytes(val);
+        Children = [];
+    }
     public int TagNumber { get; } = 24;
     public string TagName { get; } = Tag.GeneralizedTime.ToString2();
     public int TagClass { get; } = 0;
@@ -18,4 +30,5 @@ public class GeneralizedTime : ITag
     public bool IsEoc { get; }
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

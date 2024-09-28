@@ -25,6 +25,19 @@ public class UtcTimeParsingStrategy : IContentParsingStrategy
         var ms = str.Substring(14);
         return new DateTime(y, m, d, h, min, sec, DateTimeKind.Utc).ToString();
     }
+    public string Reverse(DateTime dateTime)
+    {
+        var str = dateTime.ToString("yyMMddHHmmss");
+        if (int.Parse(str.Substring(0, 2)) >= 70)
+        {
+            str = "19" + str.Substring(2);
+        }
+        else
+        {
+            str = "20" + str.Substring(2);
+        }
+        return str;
+    }
 
     public static UtcTimeParsingStrategy Default { get; } = new UtcTimeParsingStrategy();
 }

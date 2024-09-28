@@ -10,6 +10,9 @@ public class Utf8String : ITag
         Content = content ?? [];
         Children = children ?? new List<ITag>();
     }
+    public Utf8String(string text) : this(System.Text.Encoding.UTF8.GetBytes(text))
+    {
+    }
     public int TagNumber { get; } = 12;
     public string TagName { get; } = Tag.UTF8String.ToString2();
     public int TagClass { get; } = 0;
@@ -18,4 +21,5 @@ public class Utf8String : ITag
     public bool IsEoc { get; }
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

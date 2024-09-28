@@ -19,6 +19,44 @@ public static partial class Asn1Serializer
     /// </summary>
     /// <param name="data">The byte array containing the ASN.1 data.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(byte[] data, [NotNullWhen(true)] out ITag? tag)
+        => TryDeserialize(data, out tag, out _);
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified byte array using the specified tag factory.
+    /// </summary>
+    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag)
+        => TryDeserialize(data, tagFactory, out tag, out _);
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified stream.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(Stream stream, [NotNullWhen(true)] out ITag? tag)
+        => TryDeserialize(stream, out tag, out _);
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified stream using the specified tag factory.
+    /// </summary>
+    /// <param name="stream">The stream containing the ASN.1 data.</param>
+    /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
+    /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
+    public static bool TryDeserialize(Stream stream, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag)
+        => TryDeserialize(stream, tagFactory, out tag, out _);
+
+    /// <summary>
+    /// Tries to deserialize the ASN.1 data from the specified byte array.
+    /// </summary>
+    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <param name="error">When this method returns <see langword="false"/>, contains the error message; otherwise, <see langword="null"/>.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryDeserialize(byte[] data, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
@@ -72,6 +110,8 @@ public static partial class Asn1Serializer
                 return false;
             }
             tag = DeserializeInternal(stream, ref error, tagFactory);
+            if (tag is not null)
+                error = null;
             return tag is not null;
         }
         catch (Exception ex) //just to be safe
@@ -128,7 +168,7 @@ public static partial class Asn1Serializer
     {
         string? error = null;
         if (stream is null or { Length: 0 })
-            throw new Asn1DeserializationException("Stream is null or empty.");
+            throw new ArgumentException("Stream is null or empty.", nameof(stream));
         return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
     }
 

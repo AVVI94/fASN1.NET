@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text;
 
 
 namespace fASN1.NET.Tags;
@@ -10,6 +11,9 @@ public class GeneralString : ITag
         Content = content ?? [];
         Children = children ?? new List<ITag>();
     }
+    public GeneralString(string text) : this(Encoding.ASCII.GetBytes(text))
+    {
+    }
     public int TagNumber { get; } = 27;
     public string TagName { get; } = Tag.GeneralString.ToString2();
     public int TagClass { get; } = 0;
@@ -18,4 +22,5 @@ public class GeneralString : ITag
     public bool IsEoc { get; }
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

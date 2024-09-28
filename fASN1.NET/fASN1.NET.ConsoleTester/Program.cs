@@ -9,6 +9,11 @@ var data = Convert.FromBase64String("MIIEozCCBEmgAwIBAgIQTij3hrZsGjuULNLEDrdCpTA
 using var ms = new MemoryStream(data);
 var tag = Asn1Serializer.Deserialize(ms);
 
+File.WriteAllText("asn1.txt", Asn1Serializer.TagToString(tag, x=>
+{
+    x.ContentLengthHandling = ContentLengthHandling.Wrap;
+}));
+
 if (Asn1Serializer.TryDeserialize(data, out var tag2, out var error) is false)
 {
     Console.WriteLine($"Data deserialization error: {error}");

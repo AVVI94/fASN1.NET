@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text;
 
 
 namespace fASN1.NET.Tags;
@@ -10,6 +11,9 @@ public class IA5String : ITag
         Content = content ?? [];
         Children = children ?? new List<ITag>();
     }
+    public IA5String(string text) : this(Encoding.ASCII.GetBytes(text))
+    {
+    }
     public int TagNumber { get; } = 22;
     public string TagName { get; } = Tag.IA5String.ToString2();
     public int TagClass { get; } = 0;
@@ -18,4 +22,5 @@ public class IA5String : ITag
     public bool IsEoc { get; }
     public IList<ITag> Children { get; }
     public byte[] Content { get; set; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

@@ -41,4 +41,5 @@ public class BitString : ITag
         }
         return unusedBits;
     }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

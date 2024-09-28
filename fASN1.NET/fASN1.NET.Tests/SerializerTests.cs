@@ -383,4 +383,5 @@ public class MockTag : ITag
     public bool IsConstructed { get; }
     public bool IsUniversal { get; }
     public bool IsEoc { get; }
+    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }
