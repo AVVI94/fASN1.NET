@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using fASN1.NET.ContentParsing;
 using fASN1.NET.Oid;
 using fASN1.NET.Tags;
 using fASN1.NET.Tags.San;
@@ -434,6 +436,61 @@ public static partial class Extensions
             return false;
         }
     }
+
+    /// <summary>
+    /// Attempts to get the raw unprocessed Subject Directory Attributes from the specified X.509v3 certificate tag.
+    /// </summary>
+    /// <param name="tag">
+    /// The certificate tag to check.
+    /// </param>
+    /// <returns>
+    /// The Subject Directory Attributes <see cref="ITag"/> object.
+    /// </returns>
+    public static ITag? GetSubjectDirectoryAttributesRaw(this ITag tag)
+    {
+        try
+        {
+            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+                return null;
+            foreach (var ext in GetCretificateExtensionsInternal(tag))
+            {
+                if (ext.Children[0].Content.SequenceEqual(_subjectDirectoryAttributesOidSequence))
+                {
+                    var octet = ext.Children[1];
+                    if (octet.Children.Count == 0)
+                        return null;
+                    return octet.Children[0];
+                }
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to get the Subject Directory Attributes from the specified X.509v3 certificate tag.
+    /// </summary>
+    /// <param name="tag">The certificate tag to check.</param>
+    /// <param name="attrs">The Subject Directory Attributes object, or <see langword="null"/> if the Subject Directory Attributes were not found.</param>
+    /// <returns><see langword="true"/> if the Subject Directory Attributes were found and parsed; otherwise, <see langword="false"/>.</returns>
+    public static bool TryGetSubjectDirectoryAttributesFromCertificate(this ITag tag,[NotNullWhen(true)] out SubjectDirectory.SubjectDirectoryAttributes? attrs)
+    {
+        attrs = null;
+        try
+        {
+            if (GetSubjectDirectoryAttributesRaw(tag) is not ITag sda)
+                return false;
+            attrs = SubjectDirectory.SubjectDirectoryAttributes.FromTag(sda);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 public enum SubjectItemKind
@@ -550,5 +607,23 @@ public static partial class Extensions
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Attempts to get the value for the requested subject item from the specified certificate request tag.
+    /// </summary>
+    /// <remarks>
+    /// Not all tags have content that can be converted to a human-readable string. Use this method with caution.
+    /// If the tag is not a universal tag, the method will attempt to parse the content using the provided strategy locator. 
+    /// Universal tags are parsed using the corresponding parsing strategy, which is resolved by <see cref="StrategyLocator"/>.
+    /// </remarks>
+    public static string ContentToString(this ITag tag, StrategyLocator? strategyLocator = null)
+    {
+        if (!tag.IsUniversal)
+        {
+            return OctetStringParsingStrategy.Default.Parse(tag.Content);
+        }
+        return (strategyLocator ?? StrategyLocator.Default).GetStrategy(tag.TagNumber & 0x1F)
+                                                           .Parse(tag.Content);
     }
 }
