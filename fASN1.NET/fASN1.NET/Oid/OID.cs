@@ -41,6 +41,12 @@ public class OID
     public const string POSTAL_CODE = "2.5.4.17";
     public const string AUTHORITY_KEY_IDENTIFIER = "2.5.29.35";
     public const string SUBJECT_KEY_IDENTIFIER = "2.5.29.14";
+    public const string SUBJECT_DIRECTORY_ATTRIBUTES = "2.5.29.9";
+    public const string COUNTRY_OF_CITIZENSHIP = "1.3.6.1.5.5.7.9.4";
+    public const string COUNTRY_OF_RESIDENCE = "1.3.6.1.5.5.7.9.5";
+    public const string GENDER = "1.3.6.1.5.5.7.9.3";
+    public const string PLACE_OF_BIRTH = "1.3.6.1.5.5.7.9.2";
+    public const string DATE_OF_BIRTH = "1.3.6.1.5.5.7.9.1";
 #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 
 
@@ -1457,11 +1463,11 @@ public class OID
 {"1.3.6.1.5.5.7.8.2",new OID("1.3.6.1.5.5.7.8.2","userGroup","PKIX other name")},
 {"1.3.6.1.5.5.7.8.5",new OID("1.3.6.1.5.5.7.8.5","xmppAddr","PKIX other name")},
 {"1.3.6.1.5.5.7.9",new OID("1.3.6.1.5.5.7.9","personalData","PKIX qualified certificates")},
-{"1.3.6.1.5.5.7.9.1",new OID("1.3.6.1.5.5.7.9.1","dateOfBirth","PKIX personal data")},
-{"1.3.6.1.5.5.7.9.2",new OID("1.3.6.1.5.5.7.9.2","placeOfBirth","PKIX personal data")},
-{"1.3.6.1.5.5.7.9.3",new OID("1.3.6.1.5.5.7.9.3","gender","PKIX personal data")},
-{"1.3.6.1.5.5.7.9.4",new OID("1.3.6.1.5.5.7.9.4","countryOfCitizenship","PKIX personal data")},
-{"1.3.6.1.5.5.7.9.5",new OID("1.3.6.1.5.5.7.9.5","countryOfResidence","PKIX personal data")},
+{DATE_OF_BIRTH,new OID(DATE_OF_BIRTH,"dateOfBirth","PKIX personal data")},
+{PLACE_OF_BIRTH,new OID(PLACE_OF_BIRTH,"placeOfBirth","PKIX personal data")},
+{GENDER,new OID(GENDER,"gender","PKIX personal data")},
+{COUNTRY_OF_CITIZENSHIP,new OID(COUNTRY_OF_CITIZENSHIP,"countryOfCitizenship","PKIX personal data")},
+{COUNTRY_OF_RESIDENCE,new OID(COUNTRY_OF_RESIDENCE,"countryOfResidence","PKIX personal data")},
 {"1.3.6.1.5.5.7.10",new OID("1.3.6.1.5.5.7.10","attributeCertificate","PKIX")},
 {"1.3.6.1.5.5.7.10.1",new OID("1.3.6.1.5.5.7.10.1","authenticationInfo","PKIX attribute certificate extension")},
 {"1.3.6.1.5.5.7.10.2",new OID("1.3.6.1.5.5.7.10.2","accessIdentity","PKIX attribute certificate extension")},
@@ -1932,7 +1938,7 @@ public class OID
 {"2.5.29.6",new OID("2.5.29.6","subtreesConstraint","X.509 extension.  Obsolete use nameConstraints instead")},
 {"2.5.29.7",new OID("2.5.29.7","subjectAltName","X.509 extension.  Deprecated use 2 5 29 17 instead")},
 {"2.5.29.8",new OID("2.5.29.8","issuerAltName","X.509 extension.  Deprecated use 2 5 29 18 instead")},
-{"2.5.29.9",new OID("2.5.29.9","subjectDirectoryAttributes","X.509 extension")},
+{SUBJECT_DIRECTORY_ATTRIBUTES,new OID(SUBJECT_DIRECTORY_ATTRIBUTES,"subjectDirectoryAttributes","X.509 extension")},
 {"2.5.29.10",new OID("2.5.29.10","basicConstraints","X.509 extension.  Deprecated use 2 5 29 19 instead")},
 {"2.5.29.11",new OID("2.5.29.11","nameConstraints","X.509 extension.  Deprecated use 2 5 29 30 instead")},
 {"2.5.29.12",new OID("2.5.29.12","policyConstraints","X.509 extension.  Deprecated use 2 5 29 36 instead")},

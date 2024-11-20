@@ -19,6 +19,16 @@ Features
 * [RFC 5912](https://datatracker.ietf.org/doc/html/rfc5912)
 * [A Layman's Guide to a Subset of ASN.1, BER, and DER](https://luca.ntop.org/Teaching/Appunti/asn1.html)
 
+# Table of Contents
+
+- [Installation](#installation)
+
+-  [Usage](#usage)
+    * [Deserialize ASN.1 Data and get certificate details](#deserialize-asn1-data-and-get-certificate-details)
+    * [Serialize ASN.1 Data](#serialize-asn1-data)
+
+- [Performance](#performance) 
+
 ## Installation
 
 fASN1.NET is available as a NuGet package. You can install it using the following command:
@@ -119,6 +129,65 @@ Sequence
  |  | UTF8String Random text
  |  | [0]
  |  |  | BitString 011110110111110111011110111111110000000000000001000
+```
+
+### Get Subject Director Attributes (SDA) from a certificate
+
+The `fASN1.NET` library provides a predefined class for working with Subject Directory Attributes (SDA), as specified in (https://datatracker.ietf.org/doc/html/rfc3739#page-9).
+
+The `SubjectDirectoryAttributes` class includes the following properties:
+
+```cs
+    /// <summary>
+    /// Gets the gender. 
+    /// </summary>
+    /// <remarks>
+    /// If this property is <see langword="null"/>, you may use <see cref="GenderString"/> property to get value that is not in the enum range.
+    /// </remarks>
+    public Gender? Gender { get; protected set; }
+
+    /// <summary>
+    /// Gets the gender as a string.
+    /// </summary>
+    public string? GenderString { get; protected set; }
+
+    /// <summary>
+    /// Gets the date of birth.
+    /// </summary>
+    public DateTime? DateOfBirth { get; protected set; }
+
+    /// <summary>
+    /// Gets the place of birth.
+    /// </summary>
+    public string? PlaceOfBirth { get; protected set; }
+
+    /// <summary>
+    /// Gets the country of residence.
+    /// </summary>
+    public IReadOnlyList<string> CountryOfResidence { get; protected set; }
+
+    /// <summary>
+    /// Gets the country of citizenship.
+    /// </summary>
+    public IReadOnlyList<string> CountryOfCitizenship { get; protected set; }
+```
+
+The `SubjectDirectoryAttributes` class is not sealed, allowing developers to inherit it to add custom properties or override setters for existing ones.
+
+`SubjectDirectoryAttributes` class in the following file: [SubjectDirectory/SubjectDirectoryAttributes.cs](fASN1.NET/fASN1.NET/SubjectDirectory/SubjectDirectoryAttributes.cs)
+
+The example below demonstrates how to extract Subject Directory Attributes (SDA) from an X.509v3 certificate:
+
+```cs
+ITag cert = new X509Certificate2(_pem);
+bool sda = SubjectDirectoryAttributes.FromCertificate(cert);
+```
+
+You can also extract the Subject Directory Attributes (SDA) directly from an ASN.1 tag:
+
+```cs
+ITag tag = Asn1Serializer.Deserialize(_pem);
+bool success = tag.TryGetSubjectDirectoryAttributesFromCertificate(out var sda);
 ```
 
 ## Performance

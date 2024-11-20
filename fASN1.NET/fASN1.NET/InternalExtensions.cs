@@ -21,6 +21,13 @@ internal static class InternalExtensions
     public static readonly byte[] _extKeyUsageSequence = OID.GetOrCreate(OID.EXT_KEY_USAGE).ByteValue;
     public static readonly byte[] _authorityKeyIdentifierOidSequence = OID.GetOrCreate(OID.AUTHORITY_KEY_IDENTIFIER).ByteValue;
     public static readonly byte[] _subjectKeyIdentifierOidSequence = OID.GetOrCreate(OID.SUBJECT_KEY_IDENTIFIER).ByteValue;
+    public static readonly byte[] _subjectDirectoryAttributesOidSequence = OID.GetOrCreate(OID.SUBJECT_DIRECTORY_ATTRIBUTES).ByteValue;
+
+    public static readonly byte[] _countryOfCitizenshipOidSequence = OID.GetOrCreate(OID.COUNTRY_OF_CITIZENSHIP).ByteValue;
+    public static readonly byte[] _countryOfResidenceOidSequence = OID.GetOrCreate(OID.COUNTRY_OF_RESIDENCE).ByteValue;
+    public static readonly byte[] _genderOidSequence = OID.GetOrCreate(OID.GENDER).ByteValue;
+    public static readonly byte[] _dateOfBirthOidSequence = OID.GetOrCreate(OID.DATE_OF_BIRTH).ByteValue;
+    public static readonly byte[] _placeOfBirthOidSequence = OID.GetOrCreate(OID.PLACE_OF_BIRTH).ByteValue;
 
     public static bool HasRequestedExtensions(ITag topLevelCertRequestTag)
     {
@@ -83,17 +90,6 @@ internal static class InternalExtensions
         _ = stream.Seek(-1, SeekOrigin.Current);
         return value;
     }
-
-    public static string ContentToString(this ITag tag, StrategyLocator? strategyLocator = null)
-    {
-        if (!tag.IsUniversal)
-        {
-            return OctetStringParsingStrategy.Default.Parse(tag.Content);
-        }
-        return (strategyLocator ?? StrategyLocator.Default).GetStrategy(tag.TagNumber & 0x1F)
-                                                           .Parse(tag.Content);
-    }
-
 
     /// <summary>
     /// This method attempts to locate the value for the requested OID. It's important to note that a certificate may contain multiple values for the requested OID, and these values are ordered in the 'items' list as they appear in the structure.
