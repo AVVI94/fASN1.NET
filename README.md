@@ -26,6 +26,7 @@ Features
 -  [Usage](#usage)
     * [Deserialize ASN.1 Data and get certificate details](#deserialize-asn1-data-and-get-certificate-details)
     * [Serialize ASN.1 Data](#serialize-asn1-data)
+    * [Get Subject Directory Attributes](#get-subject-director-attributes-sda-from-a-certificate)
 
 - [Performance](#performance) 
 
