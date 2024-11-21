@@ -181,7 +181,7 @@ The example below demonstrates how to extract Subject Directory Attributes (SDA)
 
 ```cs
 ITag cert = new X509Certificate2(_pem);
-bool sda = SubjectDirectoryAttributes.FromCertificate(cert);
+var sda = SubjectDirectoryAttributes.FromCertificate(cert);
 ```
 
 You can also extract the Subject Directory Attributes (SDA) directly from an ASN.1 tag:
