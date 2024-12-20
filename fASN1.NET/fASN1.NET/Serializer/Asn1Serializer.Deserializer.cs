@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using fASN1.NET.Factory;
@@ -181,6 +182,7 @@ public static partial class Asn1Serializer
         }
         var tag = tagFactory.Create(tagNumber);
         long? length = DecodeLength(stream, out var valid);
+        Debug.Assert(length is null && !valid || length is not null && length.Value >= 0);
         if (!valid)
         {
             return null;
@@ -327,6 +329,12 @@ public static partial class Asn1Serializer
         for (int y = 0; y < len; y++)
         {
             buf = (buf * 256) + data.ReadByte();
+        }
+
+        if(buf < 0)
+        {
+            valid = false;
+            return null;
         }
 
         return buf;

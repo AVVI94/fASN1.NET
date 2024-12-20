@@ -276,4 +276,73 @@ public class ExtensionsTests
         Assert.True(ok);
         Assert.Equal("CA270AEED4E9E8B3D54ECA01AEAAD8A45FC7DD45", skid);
     }
+
+    [Fact]
+    public void TryGetAuthorityKeyIdentifier_ShouldNotGetAkidAndNotCrash()
+    {
+        var req = Convert.FromBase64String("""
+            MIICwDCCAagCAQAwOzEQMA4GA1UEAwwHcXdlIGFzZDEMMAoGA1UEKgwDcXdlMQwwCgYDVQQEDANh
+            c2QxCzAJBgNVBAYTAkNaMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm6FpPA6HNA70
+            N37rWjSlaVvyHW1bbbSMXKIgu146K2+rAOQFvYc0VaplCztreopzF7wu8H44vuZRYMzPKKlCwwbh
+            JZ2mEd7AWpllZxoUFzs2THg6gcEBS4FYSQgpHeo7Bn2LGw+GKGHoR/6/txgVaMW+i4N0RtPyKdgF
+            ZxNFrIytPvz+IkUxk0y6XDv0FcXp14DzwNYB3Eob9SQaWuJN5cR/zpS+Qd7F5LJ8aW+YWzMDENl5
+            1MzQkX536MAU1K+rJVnaL+2jy79erzHyRvXgsmazEDdd6NV7+AaR2LbfJdwPj3wouURqtuXd/roN
+            4bV+E+C6L7zkidxIUm4KNgV8oQIDAQABoEAwPgYJKoZIhvcNAQkOMTEwLzAOBgNVHQ8BAf8EBAMC
+            BeAwHQYDVR0lBBYwFAYIKwYBBQUHAwQGCCsGAQUFBwMCMA0GCSqGSIb3DQEBCwUAA4IBAQAst/Ko
+            4ID7cgv3FwQHbeq/mjyb+SKshg2iMMRIcJLm0GcM7ExPk6UlpUyugbtljnwFBn6aQg5yP33UTDD7
+            q7HZJv8es2zIwcgKCfi4AkdJD08uMIYO8ADjqDuuofHuF8B6WrRyifjMHJyojuFXQCK7cVKuwOa3
+            Xn4E9xDYNmLYsh1FBZ6kOyqg5baKQSKtBGDfgo6X0hrfnPqs1UurbFofRI9Qkt32tQOHVwcDW5ji
+            k/fEukXtJQyOaEzTMz9p3SC7DgK2oRgWJpAdlTsVbzKiZtG6G8Vz7ymNdALoEazk43Z9+j7FX++E
+            Cv8vCWeRaP4Mh3zPgGmWW17uYkZG5lv0
+            """);
+        var asn = Asn1Serializer.Deserialize(req);
+        Assert.NotNull(asn);
+        var ok = asn.TryGetAuthorityKeyIdentifier(out var aki);
+        Assert.False(ok);
+        Assert.Null(aki);
+    }
+    
+    [Fact]
+    public void TryGetAuthorityKeyIdentifier_ShouldGetAkidAndNotCrash()
+    {
+        var req = Convert.FromBase64String("""
+            MIIF1zCCA7+gAwIBAgIDAbK3MA0GCSqGSIb3DQEBCwUAMH8xKDAmBgNVBAMMH0ku
+            Q0EgVGVzdCBQdWJsaWMgQ0EvUlNBIDA0LzIwMjIxLTArBgNVBAoMJFBydm7DrSBj
+            ZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRSQ1otMjY0
+            MzkzOTUxCzAJBgNVBAYTAkNaMB4XDTI0MTIyMDA5MTcxNVoXDTI1MTIyMDA5MTcx
+            NVowUTEQMA4GA1UEAwwHcXdlIGFzZDEMMAoGA1UEKgwDcXdlMQwwCgYDVQQEDANh
+            c2QxCzAJBgNVBAYTAkNaMRQwEgYDVQQFEwtJQ0EgLSA5NjMwMjCCASIwDQYJKoZI
+            hvcNAQEBBQADggEPADCCAQoCggEBAJuhaTwOhzQO9Dd+61o0pWlb8h1tW220jFyi
+            ILteOitvqwDkBb2HNFWqZQs7a3qKcxe8LvB+OL7mUWDMzyipQsMG4SWdphHewFqZ
+            ZWcaFBc7Nkx4OoHBAUuBWEkIKR3qOwZ9ixsPhihh6Ef+v7cYFWjFvouDdEbT8inY
+            BWcTRayMrT78/iJFMZNMulw79BXF6deA88DWAdxKG/UkGlriTeXEf86UvkHexeSy
+            fGlvmFszAxDZedTM0JF+d+jAFNSvqyVZ2i/to8u/Xq8x8kb14LJmsxA3XejVe/gG
+            kdi23yXcD498KLlEarbl3f66DeG1fhPgui+85IncSFJuCjYFfKECAwEAAaOCAYgw
+            ggGEMCAGA1UdEQQZMBegFQYKKwYBBAGBuEgEBqAHDAU5NjMwMjAOBgNVHQ8BAf8E
+            BAMCBeAwRQYDVR0gBD4wPDAwBg0rBgEEAYG4SAoDRgEBMB8wHQYIKwYBBQUHAgEW
+            EWh0dHA6Ly93d3cuaWNhLmN6MAgGBgQAj3oBATAzBgNVHR8ELDAqMCigJqAkhiJo
+            dHRwOi8vdGVzdHMuaWNhLmN6L3RwY2EyMl9yc2EuY3JsMGoGCCsGAQUFBwEBBF4w
+            XDAuBggrBgEFBQcwAoYiaHR0cDovL3Rlc3RzLmljYS5jei90cGNhMjJfcnNhLmNl
+            cjAqBggrBgEFBQcwAYYeaHR0cDovL3RvY3NwLmljYS5jei90cGNhMjJfcnNhMAkG
+            A1UdEwQCMAAwHwYDVR0jBBgwFoAUZaEc+pLhCvZMhevyM9phYkEEGeswHQYDVR0O
+            BBYEFB6E5xJzPaAElLAwP3++Va41NeWtMB0GA1UdJQQWMBQGCCsGAQUFBwMEBggr
+            BgEFBQcDAjANBgkqhkiG9w0BAQsFAAOCAgEAJ3swwiQQpgPYgOn1JQpFhV3kzRaQ
+            sWFfU32RAq8Pi46vdbMUVQ7xZefKqOu9ZHd+uSoA86VRSYVrf3G1KPO2R9opmxoN
+            UnU0BYdV4c2XFr1TBv+c0ovomSda1bNPJW499lJClkIHDEAjO1wPYNooxkh3uxKm
+            yIU/jt9odI8Vzi4lBHrk+JSy8HMwE8C6zxsB3OvwKIDmehkZqgK12duSo2kkw6jn
+            NrvbbQc7je93RV8FxCf8FlDL7+t5Y11zlBCYqFd45wnG1TnH7/efz5ShpVko4TOa
+            qJ9MGvom0KjpTNioGfrAYDWMJXYTDtEJ9LIa3qg0X8GEWUXek5Mb/gzQY3gLILKO
+            a0OPa0DPqppwiFs+DH9UvPEir8hvLTJUya+pkZ+YI0BVDWf/nwLj0RGiN1GwdZ6B
+            QeiX+HwGqJ9b/CyFlvwEgLa5HhpIGn9hFHLYITv46MDFsPKpbwJvM5B89SmQ2F9d
+            bIdjzIlg43wT7bM2mQxt07V+e2q9BBul4lIs194v5NIc/Z+Wr/l+8KIOBhOdFotd
+            8/6YuOcFsHQefqTLOia0Va3g8lUvoCwQL/hfMjHNq4labDtJr4rAzqBJSk3DSliL
+            kIioHHvYtk2gw4IRs2jEO8rXHToOMI78qDccHpw5asK5NXIipMWcSzgPt1uIMVjz
+            7a+l3bNxrv+y2II=
+            """);
+        var asn = Asn1Serializer.Deserialize(req);
+        Assert.NotNull(asn);
+        var ok = asn.TryGetAuthorityKeyIdentifier(out var akid);
+        Assert.True(ok);
+        Assert.Equal("65A11CFA92E10AF64C85EBF233DA6162410419EB", akid);
+    }
 }
