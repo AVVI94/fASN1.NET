@@ -50,12 +50,13 @@ internal static class InternalExtensions
     }
 
     public static bool IsKeyUsageSequence(this ITag tag)
-    => tag.Children.Count == 3 && tag.Children[0] is { TagNumber: (int)Tag.ObjectIdentifier } oidTag && oidTag.Content.SequenceEqual(_keyUsageOidSequence);
+    // Count 2 or 3: 2 when critical flag is missing (not critical), 3 when critical flag is present
+    => tag.Children.Count is 2 or 3 && tag.Children[0] is { TagNumber: (int)Tag.ObjectIdentifier } oidTag && oidTag.Content.SequenceEqual(_keyUsageOidSequence);
 
     public static bool IsKeyUsageCritical(this ITag tag)
          => tag.IsKeyUsageSequence() && tag.Children[1] is { TagNumber: (int)Tag.Boolean } boolTag && boolTag.Content.SequenceEqual(_booleanTrueSequence);
     public static ITag GetKeyUsageBitStringTag(this ITag tag)
-    => tag.Children[2].Children[0];
+    => tag.Children[tag.Children.Count - 1].Children[0];
     public static string GetSetValue(ITag t)
     {
         return t.Children[0].Children[1].ContentToString();

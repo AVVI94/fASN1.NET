@@ -26,19 +26,19 @@ public class Bench
         _certReqTag = fASN1.NET.Asn1Serializer.Deserialize(ms2);
     }
 
-    //[Benchmark]
-    //public ITag DeserializeCertificate()
-    //{
-    //    using var ms = new MemoryStream(_certData);
-    //    return fASN1.NET.Asn1Serializer.Deserialize(ms);
-    //}
+    [Benchmark]
+    public ITag DeserializeCertificate()
+    {
+        using var ms = new MemoryStream(_certData);
+        return fASN1.NET.Asn1Serializer.Deserialize(ms);
+    }
 
-    //[Benchmark]
-    //public ITag DeserializeCertificateRequest()
-    //{
-    //    using var ms = new MemoryStream(_certReqData);
-    //    return fASN1.NET.Asn1Serializer.Deserialize(ms, out _);
-    //}
+    [Benchmark]
+    public ITag DeserializeCertificateRequest()
+    {
+        using var ms = new MemoryStream(_certReqData);
+        return fASN1.NET.Asn1Serializer.Deserialize(ms);
+    }
 
     //[Benchmark]
     //public byte[] SerializeCertificate()
@@ -52,11 +52,11 @@ public class Bench
     //    return fASN1.NET.Asn1Serializer.Serialize(_certReqTag);
     //}
 
-    [Benchmark]
-    public string SerializeCertificateTagToString()
-    {
-        return Asn1Serializer.TagToString(_certTag);
-    }
+    //[Benchmark]
+    //public string SerializeCertificateTagToString()
+    //{
+    //    return Asn1Serializer.TagToString(_certTag);
+    //}
 
     //[Benchmark]
     //public string SerializeCertificateRequestTagToString()

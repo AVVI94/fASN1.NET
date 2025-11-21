@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="../README.md" />
+    <File Path=".editorconfig" />
+  </Folder>
+  <Project Path="fASN1.NET.Benchmark/fASN1.NET.Benchmark.csproj" />
+  <Project Path="fASN1.NET.ConsoleTester/fASN1.NET.ConsoleTester.csproj" />
+  <Project Path="fASN1.NET.Tests/fASN1.NET.Tests.csproj" />
+  <Project Path="fASN1.NET/fASN1.NET.csproj" />
+</Solution>

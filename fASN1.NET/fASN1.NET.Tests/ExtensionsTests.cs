@@ -1,6 +1,7 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 
 namespace fASN1.NET.Tests;
+
 public class ExtensionsTests
 {
     [Fact]
@@ -228,7 +229,7 @@ public class ExtensionsTests
         Assert.True(ok);
         Assert.Equal("65A11CFA92E10AF64C85EBF233DA6162410419EB", aki);
     }
-    
+
     [Fact]
     public void TryGetSubjectKeyIdentifier_ReturnsSkid()
     {
@@ -301,7 +302,7 @@ public class ExtensionsTests
         Assert.False(ok);
         Assert.Null(aki);
     }
-    
+
     [Fact]
     public void TryGetAuthorityKeyIdentifier_ShouldGetAkidAndNotCrash()
     {
@@ -344,5 +345,17 @@ public class ExtensionsTests
         var ok = asn.TryGetAuthorityKeyIdentifier(out var akid);
         Assert.True(ok);
         Assert.Equal("65A11CFA92E10AF64C85EBF233DA6162410419EB", akid);
+    }
+
+    [Theory]
+    [InlineData("MIID0TCCArkCAQAwgZsxHjAcBgNVBAMMFXJpc3BmLXRlc3QubWYuY21zMi5jejELMAkGA1UE\r\nBhMCQ1oxMjAwBgNVBAoMKcSMZXNrw6EgcmVwdWJsaWthIC0gTWluaXN0ZXJzdHZvIGZpbmFu\r\nY8OtMRAwDgYDVQQHDAdQcmFoYSAxMRUwEwYDVQQJDAxMZXRlbnNrw6EgMTUxDzANBgNVBBEM\r\nBjExOCAxMDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALAu0adgHO/0fQWYSKDb\r\nyEKXAcNx85awWgSU+DaKfn4qkpTg383TpNKZirY1Wk/zMagqB/vUo5tNGj3nC7HvA21ORsqx\r\n+b0ZD8PH809mp4M2mcfeLViurJDzJyQqbPW052TijlyBH9wSnjxbOqGHSlan3jvtds3WcsAP\r\nW5LOu19DrWgGYsULL/K00l5hHy1BiWeUuzJcIuSuun3JYKTe8M8dXPbyl/gkYh0LvQu+T6T2\r\nHOgukLcAwumV8mBkWkpeC1nP3Ll9zFAsr3mz4tTSOI1xCWJ8gjEjR2wa84Y0luyQzPbNISmF\r\n3VDuMHvN8f0sB06GiG7CVxuSEVKfnoU5GyECAwEAAaCB7zBTBgkqhkiG9w0BCQ4xRjBEMAsG\r\nA1UdDwQEAwIFoDAgBgNVHREEGTAXghVyaXNwZi10ZXN0Lm1mLmNtczIuY3owEwYDVR0lBAww\r\nCgYIKwYBBQUHAwEwgZcGCisGAQQBgbhIBAIxgYgwgYUCAQAeagBNAGkAYwByAG8AcwBvAGYA\r\ndAAgAEUAbgBoAGEAbgBjAGUAZAAgAFIAUwBBACAAYQBuAGQAIABBAEUAUwAgAEMAcgB5AHAA\r\ndABvAGcAcgBhAHAAaABpAGMAIABQAHIAbwB2AGkAZABlAHIeFAAyADUAMQAxADEAOQAwADMA\r\nMwA3MA0GCSqGSIb3DQEBCwUAA4IBAQAr4IhffGbBt1oHLM9+Z3T4TZ1sugPEfCVYFwZXBb2w\r\ny1uAQF0FqthY1kjMdZDwqR19AnGbc2h7NHq46U9tJ/C4tsGTShPBIXyj8Ioaa5VsiUH3flWA\r\nZuDLyWCvM1Ixsiyhk8jOcpJgeg8zwjebjndCiKKlaSgqMRvgaLu/95QNyk2xb9bgIfCzKlWN\r\nA1WoIpFRNJcAjX59k2Kz+EbrBh2Lh972Ghyj0cTRCWaH9pvHhO94HuOATGIJLrWw8kdeCNVd\r\n/WyY9+LreEbPHkM1G7rCdaSYsgvgXAKvfBm2QCE5ZV927JVe7gS1oosOJ5ikatKe+MCgJx1j\r\nb0owwL4JDpd7",
+                new bool[] { false, true, false, false, false, false, false, false })]
+    public void TryGetKeyUasage_ShouldGetCorrectKeyUsage(string data, bool[] keyUsages)
+    {
+        var asn = Asn1Serializer.Deserialize(Convert.FromBase64String(data.ReplaceLineEndings("")));
+        Assert.NotNull(asn);
+        var ok = asn.TryGetKeyUsage(out var usages);
+        Assert.True(ok);
+        Assert.Equal(keyUsages, usages.KeyUsages);
     }
 }

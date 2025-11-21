@@ -160,7 +160,19 @@ public static partial class Extensions
         {
             //if the tag is cert, the KeyUsage location is somewhere in cert's extensions
             if (IsCertificate(tag))
+            {
                 tag = tag.Children[0].Children[tag.Children[0].Children.Count - 1].Children[0];
+            }
+            else if (IsCertificateRequest(tag) && HasRequestedExtensions(tag))
+            {
+                foreach (var item in GetRequestedExtensions(tag))
+                {
+                    if (FindKeyUsage(item, ref keyUsage))
+                    {
+                        return true;
+                    }
+                }
+            }
             return FindKeyUsage(tag, ref keyUsage);
         }
         catch
@@ -170,6 +182,9 @@ public static partial class Extensions
 
         static bool FindKeyUsage(ITag tag, ref KeyUsage keyUsage)
         {
+#if DEBUG
+            var tagString = Asn1Serializer.TagToString(tag);
+#endif
             if (tag.IsKeyUsageSequence())
             {
                 var ku = tag.GetKeyUsageBitStringTag();
@@ -476,7 +491,7 @@ public static partial class Extensions
     /// <param name="tag">The certificate tag to check.</param>
     /// <param name="attrs">The Subject Directory Attributes object, or <see langword="null"/> if the Subject Directory Attributes were not found.</param>
     /// <returns><see langword="true"/> if the Subject Directory Attributes were found and parsed; otherwise, <see langword="false"/>.</returns>
-    public static bool TryGetSubjectDirectoryAttributesFromCertificate(this ITag tag,[NotNullWhen(true)] out SubjectDirectory.SubjectDirectoryAttributes? attrs)
+    public static bool TryGetSubjectDirectoryAttributesFromCertificate(this ITag tag, [NotNullWhen(true)] out SubjectDirectory.SubjectDirectoryAttributes? attrs)
     {
         attrs = null;
         try
