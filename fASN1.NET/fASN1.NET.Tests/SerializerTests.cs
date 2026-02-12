@@ -151,11 +151,57 @@ public class SerializerTests
             -----END CERTIFICATE-----
             """);
         var ext = crt.Extensions["2.5.29.35"];
-        var fuckme = ext.Format(true);
+        var e = ext?.Format(true);
         var data = Asn1Serializer.Deserialize(ext!.RawData);
         Assert.NotNull(data);
         var str = Asn1Serializer.TagToString(data.Children[0], x => x.IncludeTagNameForContentTags = false);
         Assert.Equal("65A11CFA92E10AF64C85EBF233DA6162410419EB", str, true);
+    }
+
+    [Fact]
+    public void Deserialize_ShouldCertificate()
+    {
+        var crt = X509Certificate2.CreateFromPem("""
+            -----BEGIN CERTIFICATE-----
+            MIIGZTCCBE2gAwIBAgIJAdL/rdoqvZM7MA0GCSqGSIb3DQEBCwUAMH8xKDAmBgNV
+            BAMMH0kuQ0EgVGVzdCBQdWJsaWMgQ0EvUlNBIDA0LzIwMjIxLTArBgNVBAoMJFBy
+            dm7DrSBjZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRS
+            Q1otMjY0MzkzOTUxCzAJBgNVBAYTAkNaMB4XDTI2MDIwMjEzNDEyMloXDTI3MDIw
+            MjEzNDEyMlowWTEUMBIGA1UEAwwLRGF2aWQgVHVyemExCzAJBgNVBAYTAkNaMQ4w
+            DAYDVQQqDAVEYXZpZDEOMAwGA1UEBAwFVHVyemExFDASBgNVBAUTC0lDQSAtIDk0
+            OTA1MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvcRRzroGMRir8Noo
+            qBySCb6LmffayQnsvmBYevWO7/Zuh71gCgffQ0wJtLH6Ugaqou4QRjNMgqhPNlEs
+            kpqSvxxcSplpmmaBBzFF3vqcQxTu9+isPUApzhzVtS8CZ/9DIr9/OD57YVFLT3zL
+            Fjar+Dk1KFqe71xNtcvamlHcRxw3cH5QVJxc7bwL2yK+d0IqRJfSFK6icA5sdCQ8
+            6qOj44yqSmUZGXwG/ae8+uvuT64h2DHM2NJc4qQYuEEp5PzQZsJXrmcsnBWv72ln
+            vtfsJg8lqTxZShdzwGAT3d1Q9EpFP3XnmyFg5gAkzpT90BPZ+FgNc9fhub0/n/Ze
+            58N/iQIDAQABo4ICCDCCAgQwJQYKKwYBBAGBuEgEBwQXMBUMDTc2MDc5MTAwMDc1
+            MzICAQIBAQAwHQYKKwYBBAGBuEgEAwQPGg03NjA3OTEwMDA3NTMyMB8GCWCGSAGG
+            +EIBDQQSFhA5MjAzMDkwMzAwMDAwMzE1MC4GA1UdEQQnMCWBDHR1cnphQGljYS5j
+            eqAVBgorBgEEAYG4SAQGoAcMBTk0OTA1MA4GA1UdDwEB/wQEAwIFoDBQBgNVHSAE
+            STBHMDAGDSsGAQQBgbhICgNGAQEwHzAdBggrBgEFBQcCARYRaHR0cDovL3d3dy5p
+            Y2EuY3owCAYGBACPegECMAkGB2eBDAEFBAIwMwYDVR0fBCwwKjAooCagJIYiaHR0
+            cDovL3Rlc3RzLmljYS5jei90cGNhMjJfcnNhLmNybDBqBggrBgEFBQcBAQReMFww
+            LgYIKwYBBQUHMAKGImh0dHA6Ly90ZXN0cy5pY2EuY3ovdHBjYTIyX3JzYS5jZXIw
+            KgYIKwYBBQUHMAGGHmh0dHA6Ly90b2NzcC5pY2EuY3ovdHBjYTIyX3JzYTAJBgNV
+            HRMEAjAAMB8GA1UdIwQYMBaAFGWhHPqS4Qr2TIXr8jPaYWJBBBnrMB0GA1UdDgQW
+            BBQPEubvg9YsVpG20H23vt/kr+KBWDAdBgNVHSUEFjAUBggrBgEFBQcDBAYIKwYB
+            BQUHAwIwDQYJKoZIhvcNAQELBQADggIBAAvGuzp/3KP6X++dHSGldNZZ58OMYkTC
+            0H4fq9pU6e4uJB+CzrT/0Uu3qDSU2SLRe2oeL3HglcJtvUjyglSDW9nVlHP9Pp1W
+            zCHN3wvMjqNQAA0GAnbSQiKXRpRRHmRfKGBA3s8ecnFjr2lkO/SiXJig3OoGiN2f
+            fZNEcxmqZqJUMENASjhx7h1xkQZf3jyxKI+wg0k9yxWU1R7NvHl9aIUdCi7m4ZOe
+            lTRgEHGJtHMXeJSvsOMvZYC7p46ixyfX86ttUTsGG6j3hkmckza1GVUW7Yr8t42c
+            UF/UtMvudLFKqZdO1YQPfjbOD9v15QGhjU3BeW8S3OqTaLAsktIK4BOR94w/SY3U
+            U1HSeCXP8rA9fzGKJ2DQ8ENoYXWIx41WK+FtPVNx66xqCQBJBWSFOG3oO+OVtUOo
+            G7gCdJkOoGlXd/x6o5CDQCvi0CqQpYW0BOGnMvu/zsecRBQIeeilYVqtrMLJObKb
+            HJ6g/R30ayQsiGlKqZgKREWmqFrlib7+m5+zThcgzEgLR91tNu5BioV9+bvbJk1L
+            k7bXvW30cGnoTOO0M7kloy3bYYt2Ft4nBPyLZ6Wv1avqyv0h1Khpc/tYV44teUnA
+            StisZH3j6sOd67qe35tZY+B8rgyZmrHma1v9mT9U6taxpV8xZXyBj6E2VEgG69Oe
+            HzH+9p42FhrP
+            -----END CERTIFICATE-----
+            """);
+        var data = Asn1Serializer.Deserialize(crt.RawData);
+        Assert.NotNull(data);        
     }
 
     [Fact]

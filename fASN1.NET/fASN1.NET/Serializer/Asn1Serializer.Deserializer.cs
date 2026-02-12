@@ -218,6 +218,7 @@ public static partial class Asn1Serializer
                         {
                             Cleanup();
                             error = "EOC is not supposed to be actual content";
+                            break;
                         }
                         //throw new InvalidDataException("EOC is not supposed to be actual content");
                     }
