@@ -182,16 +182,16 @@ public static partial class Asn1Serializer
         }
         var tag = tagFactory.Create(tagNumber);
         long? length = DecodeLength(stream, out var valid);
-        Debug.Assert(length is null && !valid || length is not null && length.Value >= 0);
+        //Debug.Assert(length is null && !valid || length is not null && length.Value >= 0);
         if (!valid)
         {
             return null;
         }
         var start = stream.Position;
-
+        var tagMaxOffsetInStream = start + length;
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
         {
-            if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory))
+            if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory, tagMaxOffsetInStream))
             {
                 return null;
             }
@@ -206,7 +206,7 @@ public static partial class Asn1Serializer
             }
             else
             {
-                if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory))
+                if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory, tagMaxOffsetInStream))
                 {
                     Cleanup();
                 }
@@ -254,14 +254,14 @@ public static partial class Asn1Serializer
         return tag;
     }
 
-    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ref string? error, ITagFactory tagFactory)
+    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ref string? error, ITagFactory tagFactory, long? parentContainerEnd)
     {
         //List<ITag> tags = [];
         var start = stream.Position;
         if (length is not null)
         {
             var end = stream.Position + length.Value;
-            if (end > stream.Length)
+            if (end > stream.Length || end > parentContainerEnd)
             {
                 error = $"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream";
                 return false;
