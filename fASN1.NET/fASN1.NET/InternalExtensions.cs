@@ -31,9 +31,28 @@ internal static class InternalExtensions
 
     public static bool HasRequestedExtensions(ITag topLevelCertRequestTag)
     {
-        return topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1].TagNumber == 160
-                && topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1]
-                              .Children[0].Children[0].Content.SequenceEqual(_extensionRequestSequence);
+        if (topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1].TagNumber != 160)
+        {
+            return false;
+        }
+
+        var attributes = GetRequestAttributesTag(topLevelCertRequestTag);
+        if (attributes is null)
+        {
+            return false;
+        }
+        foreach (var attribute in attributes.Children)
+        {
+            if (attribute.Children.Count == 0)
+            {
+                continue;
+            }
+            if (attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier && attribute.Children[0].Content.SequenceEqual(_extensionRequestSequence))
+            {
+                return true;
+            }
+        }
+        return false;
     }
     public static bool HasCertExtensionsInternal(ITag topLevelCertificateTag)
     {
@@ -46,7 +65,45 @@ internal static class InternalExtensions
     }
     public static IList<ITag> GetRequestedExtensions(ITag topLevelTag)
     {
-        return topLevelTag.Children[0].Children[topLevelTag.Children[0].Children.Count - 1].Children[0].Children[1].Children[0].Children;
+        var attributes = GetRequestAttributesTag(topLevelTag);
+        if (attributes is null)
+        {
+            return [];
+        }
+        var exts = GetExtensions(attributes);
+        if (exts is null)
+        {
+            return [];
+        }
+        return exts.Children;
+
+        ITag? GetExtensions(ITag attributes)
+        {
+            foreach (var attribute in attributes.Children)
+            {
+                if (attribute.Children.Count == 0)
+                {
+                    continue;
+                }
+                if (attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier && attribute.Children[0].Content.SequenceEqual(_extensionRequestSequence))
+                {
+                    return attribute.Children[1].Children[0];
+                }
+            }
+            return null;
+        }
+    }
+
+    private static ITag? GetRequestAttributesTag(ITag topLevelCertRequestTag)
+    {
+        var certRequestInfo = topLevelCertRequestTag.Children[0];
+        var attributes = certRequestInfo.Children[certRequestInfo.Children.Count - 1];
+        if (attributes.TagNumber != 160)
+        {
+            //not attributes
+            return null;
+        }
+        return attributes;
     }
 
     public static bool IsKeyUsageSequence(this ITag tag)

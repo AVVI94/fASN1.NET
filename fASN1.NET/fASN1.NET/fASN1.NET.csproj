@@ -10,7 +10,7 @@
 		<PackageProjectUrl>https://github.com/AVVI94/fASN1.NET</PackageProjectUrl>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
-		<Version>1.4.2</Version>
+		<Version>1.4.3</Version>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
