@@ -325,10 +325,9 @@ public static partial class Asn1Serializer
         var inIndefinite = frames.Count > 0 && frames.Top.IsIndefinite;
         if (tagNumber == -1)
         {
-            if (inIndefinite)
-            {
-                error = $"Indefinite-length container at offset {frames.Top.Start} has no end-of-contents marker";
-            }
+            error = inIndefinite
+                ? $"Indefinite-length container at offset {frames.Top.Start} has no end-of-contents marker"
+                : $"Unexpected end of data at offset {elementStart}";
             return Step.Completed;
         }
         long? length = DecodeLength(stream, elementStart, ref error, out var valid);
@@ -429,7 +428,18 @@ public static partial class Asn1Serializer
                 return null;
             }
             var content = new byte[length.Value];
-            _ = stream.Read(content, 0, (int)length.Value);
+            var read = 0;
+            while (read < content.Length)
+            {
+                // Streams may return fewer bytes than requested; keep reading until the content is complete.
+                var n = stream.Read(content, read, content.Length - read);
+                if (n == 0)
+                {
+                    error = $"Unexpected end of data in the content of tag {tag.TagName} at offset {start}";
+                    return null;
+                }
+                read += n;
+            }
             tag.Content = content;
         }
         return tag;

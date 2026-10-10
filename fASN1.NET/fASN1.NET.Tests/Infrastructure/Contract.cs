@@ -43,8 +43,7 @@ internal static class Contract
         else
         {
             Assert.Null(tag);
-            if (!KnownBugs.FailuresCanLackAnErrorMessage)
-                Assert.False(string.IsNullOrEmpty(error), "TryDeserialize failed without an error message");
+            Assert.False(string.IsNullOrEmpty(error), "TryDeserialize failed without an error message");
         }
 
         // Same input behind a few junk bytes, read through the stream overload.
@@ -55,8 +54,7 @@ internal static class Contract
         {
             var streamOk = Asn1Serializer.TryDeserialize(ms, factory(), out var streamTag, out var streamError);
             Assert.Equal(ok, streamOk);
-            if (!KnownBugs.FailuresCanLackAnErrorMessage)
-                Assert.Equal(error is null, streamError is null); // offsets in the text are stream positions, so they shift
+            Assert.Equal(error is null, streamError is null); // offsets in the text are stream positions, so they shift
             if (ok)
                 TreeAssert.Equal(tag!, streamTag!);
         }
@@ -74,19 +72,10 @@ internal static class Contract
             var ex = Record.Exception(() => Asn1Serializer.Deserialize(data, factory()));
             Assert.NotNull(ex);
             if (ex is Asn1DeserializationException)
-                Assert.Equal(error ?? "Unknown deserialization error", ex.Message);
+                Assert.Equal(error, ex.Message);
         }
 
         return (tag, error);
-    }
-
-    /// <summary>
-    /// Open bugs the contract has to tolerate for now. Each fix removes its flag.
-    /// </summary>
-    internal static class KnownBugs
-    {
-        /// <summary>See KnownQuirkTests.SomeFailures_HaveNoErrorMessage.</summary>
-        public const bool FailuresCanLackAnErrorMessage = true;
     }
 
     /// <summary>Throws on the n-th call (1-based), to exercise exception propagation.</summary>

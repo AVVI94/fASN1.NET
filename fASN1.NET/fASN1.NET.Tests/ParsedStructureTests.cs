@@ -423,6 +423,32 @@ public class ParsedStructureTests
     }
 
     [Fact]
+    public void Stream_AtItsEnd_FailsWithMessage()
+    {
+        using var ms = new MemoryStream(H("02 01 05"));
+        ms.Position = 3;
+
+        Assert.False(Asn1Serializer.TryDeserialize(ms, out var tag, out var error));
+        Assert.Null(tag);
+        Assert.Equal("Unexpected end of data at offset 3", error);
+    }
+
+    [Fact]
+    public void Stream_ReturningShortReads_IsReadCompletely()
+    {
+        var data = TestCorpus.Get("file:der_09");
+        using var stream = new OneBytePerReadStream(data);
+
+        TreeAssert.Equal(Asn1Serializer.Deserialize(data), Asn1Serializer.Deserialize(stream));
+    }
+
+    /// <summary>A seekable stream that never returns more than one byte from <see cref="Stream.Read(byte[], int, int)"/>.</summary>
+    private sealed class OneBytePerReadStream(byte[] data) : MemoryStream(data)
+    {
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
+    }
+
+    [Fact]
     public void CustomFactory_BuildsEveryNodeOfTheTree()
     {
         var factory = new InstanceTrackingFactory();
