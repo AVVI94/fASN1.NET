@@ -24,11 +24,12 @@ public static partial class Asn1Serializer
     {
         var res2 = new List<byte>();
         res.Add((byte)tag.TagNumber);
-        if (tag.Children.Count > 0)
+        var childCount = TagBase.CountChildren(tag);
+        if (childCount > 0)
         {
-            foreach (var child in tag.Children)
+            for (int i = 0; i < childCount; i++)
             {
-                SerializeInternal(child, res2);
+                SerializeInternal(TagBase.ChildAt(tag, i), res2);
             }
         }
         else
@@ -123,12 +124,13 @@ public static partial class Asn1Serializer
             lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
         }
 
-        if (tag.Children.Count > 0)
+        var childCount = TagBase.CountChildren(tag);
+        if (childCount > 0)
         {
-            foreach (var child in tag.Children)
+            for (int i = 0; i < childCount; i++)
             {
                 sb.AppendLine();
-                TagToStringInternal(child, sb, options, level + 1, format, cache, ref lastObjectIdentifier);
+                TagToStringInternal(TagBase.ChildAt(tag, i), sb, options, level + 1, format, cache, ref lastObjectIdentifier);
             }
         }
     }

@@ -75,8 +75,15 @@ public static partial class Asn1Serializer
     /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
     {
-        using var ms = new MemoryStream(data);
-        return TryDeserialize(ms, tagFactory, out tag, out error);
+        var source = ArraySource.Rent(data);
+        try
+        {
+            return TryDeserialize(source, tagFactory, out tag, out error);
+        }
+        finally
+        {
+            ArraySource.Return(source);
+        }
     }
 
     /// <summary>
@@ -141,8 +148,15 @@ public static partial class Asn1Serializer
     /// <returns>The deserialized ASN.1 tag.</returns>
     public static ITag Deserialize(byte[] data, ITagFactory tagFactory)
     {
-        using var ms = new MemoryStream(data);
-        return Deserialize(ms, tagFactory);
+        var source = ArraySource.Rent(data);
+        try
+        {
+            return Deserialize(source, tagFactory);
+        }
+        finally
+        {
+            ArraySource.Return(source);
+        }
     }
 
     /// <summary>
@@ -394,7 +408,13 @@ public static partial class Asn1Serializer
     /// <summary>Entry of the materialize pass's parent stack.</summary>
     private struct OpenParent
     {
-        public IList<ITag> Children;
+        /// <summary>Exact-size children array of a built-in tag, filled in place.</summary>
+        public ITag[]? Array;
+
+        /// <summary>Children list of a custom tag (or one the factory gave children), appended to.</summary>
+        public IList<ITag>? List;
+
+        public int Next;
         public int Remaining;
     }
 
@@ -683,27 +703,23 @@ public static partial class Asn1Serializer
             else
             {
                 ref var parent = ref state.Parents[depth - 1];
-                parent.Children.Add(tag);
+                if (parent.Array is not null)
+                    parent.Array[parent.Next++] = tag;
+                else
+                    parent.List!.Add(tag);
                 parent.Remaining--;
             }
 
             if (record.IsContainer && record.ChildCount > 0)
             {
-                IList<ITag> children;
-                if (tag is TagBase builtIn && builtIn.ChildCount == 0)
-                {
-                    var list = new List<ITag>(record.ChildCount);
-                    builtIn.SetParsedChildren(list);
-                    children = list;
-                }
+                var parent = new OpenParent { Remaining = record.ChildCount };
+                if (tag is TagBase builtIn && builtIn.ChildCount == 0 && builtIn.Content.Length == 0)
+                    parent.Array = builtIn.SetParsedChildren(record.ChildCount);
                 else
-                {
-                    // A custom tag, or one the factory created with children already: append through its own list.
-                    children = tag.Children;
-                }
+                    parent.List = tag.Children; // a custom tag, or one the factory created with children already
                 if (depth == state.Parents.Length)
                     Array.Resize(ref state.Parents, state.Parents.Length * 2);
-                state.Parents[depth++] = new OpenParent { Children = children, Remaining = record.ChildCount };
+                state.Parents[depth++] = parent;
             }
 
             while (depth > 0 && state.Parents[depth - 1].Remaining == 0)
