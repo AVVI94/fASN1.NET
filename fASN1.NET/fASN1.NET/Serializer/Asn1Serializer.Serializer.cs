@@ -289,6 +289,9 @@ public static partial class Asn1Serializer
 
     private static string Multiply(this string s, int n)
     {
+        // Without this, an empty indentation still looped once per level, making deep trees quadratic.
+        if (s.Length == 0 || n <= 0)
+            return "";
         return M(s, n);
         //return n switch
         //{
