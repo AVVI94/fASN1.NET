@@ -7,8 +7,7 @@ namespace fASN1.NET.Tests;
 /// <summary>
 /// Characterization tests for parser behavior that is known to be wrong or surprising.
 /// They pin the current behavior so the iterative rewrite cannot change it by accident.
-/// When one of these is fixed on purpose, update the test to the corrected behavior,
-/// and update <see cref="ReferenceRecursiveParser"/> or retire it.
+/// When one of these is fixed, move the test to the corrected behavior.
 /// </summary>
 public class KnownQuirkTests
 {
@@ -17,7 +16,7 @@ public class KnownQuirkTests
     private static ITag Parse(string hex)
     {
         var data = H(hex);
-        Differential.AssertSameAsReference(data);
+        Contract.Check(data);
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
         return tag;
     }
@@ -80,7 +79,7 @@ public class KnownQuirkTests
     public void UnknownUniversalTag_EndsEnclosingIndefiniteContainer()
     {
         var data = H("30 80 24 80 04 01 41 00 00 02 01 05 00 00");
-        Differential.AssertSameAsReference(data);
+        Contract.Check(data);
 
         Assert.False(Asn1Serializer.TryDeserialize(data, out _, out var error));
         Assert.Equal("Content size is not correct for tag Sequence at offset 2", error);
@@ -93,7 +92,7 @@ public class KnownQuirkTests
         new Expected(typeof(EmbeddedPdv), 10, "EmbeddedPDV", 0, true, true, false, [], [Int("05")]).AssertMatches(Parse("0B 03 02 01 05"));
 
         var primitive = H("0B 02 41 42");
-        Differential.AssertSameAsReference(primitive);
+        Contract.Check(primitive);
         Assert.False(Asn1Serializer.TryDeserialize(primitive, out _, out _));
     }
 
@@ -104,7 +103,7 @@ public class KnownQuirkTests
     public void SomeFailures_HaveNoErrorMessage(string hex)
     {
         var data = H(hex);
-        Differential.AssertSameAsReference(data);
+        Contract.Check(data);
 
         Assert.False(Asn1Serializer.TryDeserialize(data, out var tag, out var error));
         Assert.Null(tag);
@@ -118,7 +117,7 @@ public class KnownQuirkTests
     public void HighTagNumberForm_IsNotSupported()
     {
         var data = H("1F 21 01 05");
-        Differential.AssertSameAsReference(data);
+        Contract.Check(data);
 
         Assert.False(Asn1Serializer.TryDeserialize(data, out _, out var error));
         Assert.Equal("Content size is not correct for tag Unknown_31 at offset 2", error);

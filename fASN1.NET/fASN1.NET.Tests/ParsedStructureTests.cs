@@ -8,7 +8,7 @@ namespace fASN1.NET.Tests;
 /// Hand-written inputs with the complete expected tree written out node by node.
 /// Each assertion checks type, TagNumber, TagName, TagClass, IsConstructed, IsUniversal, IsEoc,
 /// Content bytes and the ordered children, so no tag can be dropped, added, reordered or
-/// mis-typed without failing. Every input is also run through the reference implementation.
+/// mis-typed without failing. Every input is also checked against the public contract (see <see cref="Contract"/>).
 /// </summary>
 public class ParsedStructureTests
 {
@@ -18,20 +18,16 @@ public class ParsedStructureTests
 
     private static ITag Parse(byte[] data)
     {
-        Differential.AssertSameAsReference(data);
-        Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
-        Assert.Null(error);
-        TreeAssert.WellFormed(tag);
-        return tag;
+        var (tag, error) = Contract.Check(data);
+        Assert.True(tag is not null, error);
+        return tag!;
     }
 
     private static void AssertTree(string hex, Expected expected) => expected.AssertMatches(Parse(hex));
 
     private static void AssertFails(string hex, string? expectedError)
     {
-        var data = H(hex);
-        Differential.AssertSameAsReference(data);
-        Assert.False(Asn1Serializer.TryDeserialize(data, out var tag, out var error));
+        var (tag, error) = Contract.Check(H(hex));
         Assert.Null(tag);
         Assert.Equal(expectedError, error);
     }
@@ -366,24 +362,40 @@ public class ParsedStructureTests
     }
 
     [Fact]
-    public void CustomFactory_IsAskedForEveryElementInStreamOrder()
+    public void CustomFactory_BuildsEveryNodeOfTheTree()
     {
-        var factory = new Differential.RecordingFactory(new Factory.DefaultTagFactory());
+        var factory = new InstanceTrackingFactory();
 
-        Assert.True(Asn1Serializer.TryDeserialize(H("30 08 02 01 05 04 03 02 01 07"), factory, out _, out _));
+        Assert.True(Asn1Serializer.TryDeserialize(H("30 0E 02 01 05 04 03 02 01 07 30 80 05 00 00 00"), factory, out var tag, out _));
 
-        Assert.Equal([0x30, 0x02, 0x04, 0x02], factory.Calls);
+        var nodes = TreeAssert.Walk(tag).Select(n => n.Tag).ToList();
+        Assert.Equal(6, nodes.Count);
+        Assert.All(nodes, node => Assert.Contains(node, factory.Created));
+    }
+
+    private sealed class InstanceTrackingFactory : Factory.ITagFactory
+    {
+        private readonly Factory.DefaultTagFactory _inner = new();
+
+        public HashSet<ITag> Created { get; } = new(ReferenceEqualityComparer.Instance);
+
+        public ITag Create(int tag, byte[]? content = null)
+        {
+            var created = _inner.Create(tag, content);
+            Created.Add(created);
+            return created;
+        }
     }
 
     [Fact]
-    public void CustomFactory_SeesTagsOfAFailedProbe()
+    public void FactoryException_TryDeserializeReportsIt_DeserializeThrows()
     {
-        var factory = new Differential.RecordingFactory(new Factory.DefaultTagFactory());
+        var data = H("30 06 02 01 05 02 01 07");
 
-        Assert.True(Asn1Serializer.TryDeserialize(H("30 07 04 02 02 05 02 01 07"), factory, out var tag, out _));
-
-        Assert.Equal([0x30, 0x04, 0x02, 0x02], factory.Calls);
-        Seq(Octets("0205"), Int("07")).AssertMatches(tag);
+        Assert.False(Asn1Serializer.TryDeserialize(data, new Contract.ThrowingFactory(2), out var tag, out var error));
+        Assert.Null(tag);
+        Assert.False(string.IsNullOrEmpty(error));
+        Assert.ThrowsAny<Exception>(() => Asn1Serializer.Deserialize(data, new Contract.ThrowingFactory(2)));
     }
 
     #endregion

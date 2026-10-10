@@ -7,8 +7,7 @@ namespace fASN1.NET.Tests;
 /// Nesting far beyond what a recursive parser survives. The recursive implementation overflowed the
 /// call stack at roughly 1,200 levels of indefinite-length nesting (measured on .NET 10, Release, 1 MB
 /// main-thread stack): about 5 KB of input was enough to terminate the process, because a stack
-/// overflow cannot be caught. The iterative parser only needs heap memory. These inputs are not compared with <see cref="ReferenceRecursiveParser"/>
-/// for that reason, and the trees are inspected without recursion.
+/// overflow cannot be caught. The iterative parser only needs heap memory. The trees are inspected without recursion.
 /// </summary>
 public class DeepNestingTests
 {

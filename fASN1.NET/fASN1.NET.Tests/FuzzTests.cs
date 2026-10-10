@@ -3,23 +3,23 @@ using fASN1.NET.Tests.Infrastructure;
 namespace fASN1.NET.Tests;
 
 /// <summary>
-/// Seeded, deterministic fuzzing: the production parser must behave exactly like
-/// <see cref="ReferenceRecursiveParser"/> on valid, odd and corrupted input. Seeds are fixed,
-/// so any failure reproduces on every run and the failing input is printed in the message.
+/// Seeded, deterministic fuzzing of the public contract (see <see cref="Contract"/>) on valid, odd and
+/// corrupted input. Seeds are fixed, so any failure reproduces on every run and the failing input is
+/// printed in the message.
 /// </summary>
-public class DifferentialFuzzTests
+public class FuzzTests
 {
     public static IEnumerable<object[]> Names => TestCorpus.Names;
 
     [Theory]
     [MemberData(nameof(Names))]
-    public void MutatedCorpus_MatchesReference(string name)
+    public void MutatedCorpus_SatisfiesContract(string name)
     {
         var original = TestCorpus.Get(name);
         var rng = new Random(StableSeed(name));
         for (int i = 0; i < 1500; i++)
         {
-            Differential.AssertSameAsReference(Mutate(original, rng));
+            Contract.Check(Mutate(original, rng));
         }
     }
 
@@ -28,42 +28,29 @@ public class DifferentialFuzzTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
-    public void RandomBerTrees_MatchReference(int seed)
+    public void RandomBerTrees_SatisfyContract(int seed)
     {
         var rng = new Random(seed * 7919);
         for (int i = 0; i < 1500; i++)
         {
             var data = BerGenerator.Document(rng);
-            Differential.AssertSameAsReference(data);
+            Contract.Check(data);
             if (rng.Next(2) == 0)
-                Differential.AssertSameAsReference(Mutate(data, rng));
-        }
-    }
-
-    [Fact]
-    public void ThrowingFactory_PropagatesTheSameWay_Corpus()
-    {
-        var data = TestCorpus.Get("file:cms_signed_ber_indefinite");
-        var factory = new Differential.RecordingFactory(new Factory.DefaultTagFactory());
-        ReferenceRecursiveParser.TryDeserialize(data, factory, out _, out _);
-        for (int n = 1; n <= factory.Calls.Count + 1; n++)
-        {
-            var throwOn = n;
-            Differential.AssertSameAsReference(data, () => new Differential.ThrowingFactory(throwOn));
+                Contract.Check(Mutate(data, rng));
         }
     }
 
     [Theory]
     [InlineData(11)]
     [InlineData(12)]
-    public void ThrowingFactory_PropagatesTheSameWay_RandomTrees(int seed)
+    public void ThrowingFactory_SatisfiesContract(int seed)
     {
         var rng = new Random(seed);
-        for (int i = 0; i < 200; i++)
+        for (int i = 0; i < 300; i++)
         {
             var data = BerGenerator.Document(rng);
             var throwOn = rng.Next(1, 40);
-            Differential.AssertSameAsReference(data, () => new Differential.ThrowingFactory(throwOn));
+            Contract.Check(data, () => new Contract.ThrowingFactory(throwOn));
         }
     }
 

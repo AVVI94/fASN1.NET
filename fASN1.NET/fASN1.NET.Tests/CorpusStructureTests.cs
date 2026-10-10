@@ -146,8 +146,8 @@ public class CorpusStructureTests
 
     [Theory]
     [MemberData(nameof(Names))]
-    public void Parse_MatchesReferenceImplementation(string name)
+    public void Parse_SatisfiesPublicContract(string name)
     {
-        Differential.AssertSameAsReference(TestCorpus.Get(name));
+        Contract.Check(TestCorpus.Get(name));
     }
 }
