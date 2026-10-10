@@ -140,10 +140,7 @@ public static partial class Asn1Serializer
                     && tag.TagNumber == (int)Tag.BitString
                     && lastObjectIdentifier == Oid.OID.KEY_USAGE)
         {
-            var ku = new KeyUsage(ByteToBoolArray(tag.Content[0], out var decOnly),
-                                  false,
-                                  decOnly);
-            content = ku.ToString();
+            content = KeyUsage.FromBitStringContent(tag.Content, critical: false).ToString();
         }
         else
         {
@@ -151,20 +148,6 @@ public static partial class Asn1Serializer
         }
 
         return content;
-
-        static bool[] ByteToBoolArray(byte keyUsage, out bool decOnly)
-        {
-            bool[] keyUsages = new bool[8];
-            decOnly = true;
-
-            for (int i = 0; i < 8; i++)
-            {
-                var k = keyUsages[i] = (keyUsage & (1 << i)) != 0;
-                decOnly &= !k;
-            }
-
-            return keyUsages;
-        }
     }
 
     private static string ProcessContentString(string content, Asn1StringSerializerOptions options, string wrappedContentIndentation)

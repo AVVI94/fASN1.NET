@@ -188,18 +188,7 @@ public static partial class Extensions
             if (tag.IsKeyUsageSequence())
             {
                 var ku = tag.GetKeyUsageBitStringTag();
-                var b = ku.Content[0];
-                bool[] kus = [
-                    ((b >> 1) & 1) == 1,
-                    ((b >> 2) & 1) == 1,
-                    ((b >> 3) & 1) == 1,
-                    ((b >> 4) & 1) == 1,
-                    ((b >> 5) & 1) == 1,
-                    ((b >> 6) & 1) == 1,
-                    ((b >> 7) & 1) == 1,
-                    ((b >> 8) & 1) == 1,
-                    ];
-                keyUsage = new KeyUsage(kus, tag.IsKeyUsageCritical(), kus[7]);
+                keyUsage = KeyUsage.FromBitStringContent(ku.Content, tag.IsKeyUsageCritical());
                 return true;
             }
 

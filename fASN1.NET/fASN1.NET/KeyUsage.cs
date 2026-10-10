@@ -32,7 +32,6 @@ public readonly struct KeyUsage
     /// <param name="critical">A value indicating whether the key usage is critical.</param>
     public KeyUsage(bool critical)
     {
-        DecipherOnly = true;
         KeyUsages = new bool[8];
         Critical = critical;
     }
@@ -58,6 +57,33 @@ public readonly struct KeyUsage
                     bool keyCertSign = false,
                     bool cRLSign = false,
                     bool encipherOnly = false)
+        : this(critical, digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment, keyAgreement, keyCertSign, cRLSign, encipherOnly, decipherOnly: false)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="KeyUsage"/> struct with all nine key usages of RFC 5280.
+    /// </summary>
+    /// <param name="critical">A value indicating whether the key usage is critical.</param>
+    /// <param name="digitalSignature">A value indicating whether the key is used for digital signature.</param>
+    /// <param name="nonRepudiation">A value indicating whether the key is used for non-repudiation.</param>
+    /// <param name="keyEncipherment">A value indicating whether the key is used for key encipherment.</param>
+    /// <param name="dataEncipherment">A value indicating whether the key is used for data encipherment.</param>
+    /// <param name="keyAgreement">A value indicating whether the key is used for key agreement.</param>
+    /// <param name="keyCertSign">A value indicating whether the key is used for key certificate signing.</param>
+    /// <param name="cRLSign">A value indicating whether the key is used for CRL signing.</param>
+    /// <param name="encipherOnly">A value indicating whether the key is used only for enciphering.</param>
+    /// <param name="decipherOnly">A value indicating whether the key is used only for deciphering.</param>
+    public KeyUsage(bool critical,
+                    bool digitalSignature,
+                    bool nonRepudiation,
+                    bool keyEncipherment,
+                    bool dataEncipherment,
+                    bool keyAgreement,
+                    bool keyCertSign,
+                    bool cRLSign,
+                    bool encipherOnly,
+                    bool decipherOnly)
     {
         Critical = critical;
         KeyUsages =
@@ -71,16 +97,24 @@ public readonly struct KeyUsage
             cRLSign,
             encipherOnly,
         ];
-        DecipherOnly = true;
-        if (digitalSignature
-            || nonRepudiation
-            || keyEncipherment
-            || dataEncipherment
-            || keyAgreement
-            || keyCertSign
-            || cRLSign
-            || encipherOnly)
-            DecipherOnly = false;
+        DecipherOnly = decipherOnly;
+    }
+
+    /// <summary>
+    /// Decodes the content of a keyUsage BIT STRING: the unused-bits byte, then the flags with
+    /// digitalSignature (bit 0) as the most significant bit of the first byte and decipherOnly (bit 8)
+    /// as the most significant bit of the second.
+    /// </summary>
+    internal static KeyUsage FromBitStringContent(byte[] content, bool critical)
+    {
+        var first = content.Length > 1 ? content[1] : (byte)0;
+        var keyUsages = new bool[8];
+        for (int i = 0; i < 8; i++)
+        {
+            keyUsages[i] = (first & (0x80 >> i)) != 0;
+        }
+        var decipherOnly = content.Length > 2 && (content[2] & 0x80) != 0;
+        return new KeyUsage(keyUsages, critical, decipherOnly);
     }
 
     /// <summary>

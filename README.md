@@ -90,7 +90,7 @@ Output:
 Issuer CN: Sectigo ECC Domain Validation Secure Server CA
 Subject CN: github.com
 Not After: 07.03.2025 23:59:59
-Key Usage: DigitalSignature, NonRepudiation
+Key Usage: DigitalSignature
 ```
 
 ### Serialize ASN.1 Data
