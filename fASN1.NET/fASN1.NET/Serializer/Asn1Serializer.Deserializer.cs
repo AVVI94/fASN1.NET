@@ -200,9 +200,7 @@ public static partial class Asn1Serializer
         /// <summary>Stream offset of the first content byte.</summary>
         public long Start { get; } = start;
 
-        /// <summary>
-        /// Children are read until an EOC (or a failed child) instead of up to <see cref="End"/>.
-        /// </summary>
+        /// <summary>Children are read until an end-of-contents marker instead of up to <see cref="End"/>.</summary>
         public bool IsIndefinite { get; } = length is null;
 
         /// <summary>Declared content length; <see langword="null"/> for indefinite length.</summary>
@@ -210,6 +208,24 @@ public static partial class Asn1Serializer
 
         /// <summary>Offset where definite-length children must end.</summary>
         public long End => Start + Length!.Value;
+
+        /// <summary>A probe saw an EOC among its direct children, so its content is not a run of elements.</summary>
+        public bool ContainsEoc { get; set; }
+    }
+
+    /// <summary>
+    /// What <see cref="BeginElement"/> did with the next element.
+    /// </summary>
+    private enum Step
+    {
+        /// <summary>The element was parsed completely (or failed).</summary>
+        Completed,
+
+        /// <summary>A frame was pushed; its children come next.</summary>
+        Opened,
+
+        /// <summary>The end-of-contents marker of the innermost indefinite-length frame was read.</summary>
+        EndOfContents,
     }
 
     /// <summary>
@@ -223,30 +239,22 @@ public static partial class Asn1Serializer
         ITag? completed = null;
         while (true)
         {
-            if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
+            var step = needElement ? BeginElement(stream, ref error, tagFactory, frames, out completed) : Step.Completed;
+            if (step == Step.EndOfContents)
             {
-                // A frame was opened; continue below with its first child.
+                var ended = frames.Pop();
+                completed = EndFrame(stream, ref error, in ended, success: true);
+                needElement = false;
+                continue;
             }
-            else
+            if (step == Step.Completed)
             {
                 // `completed` is a finished element, or null when it failed. Hand it to its parent.
                 if (frames.Count == 0)
                 {
                     return completed;
                 }
-                ref var parent = ref frames.Top;
-                if (parent.IsIndefinite)
-                {
-                    if (completed is null or { IsEoc: true })
-                    {
-                        // EOC ends the children. So does a failed child, which is dropped without an error.
-                        var ended = frames.Pop();
-                        completed = EndFrame(stream, ref error, in ended, success: true);
-                        needElement = false;
-                        continue;
-                    }
-                }
-                else if (completed is null)
+                if (completed is null)
                 {
                     // A failed child ends the frame unsuccessfully.
                     var failed = frames.Pop();
@@ -254,7 +262,7 @@ public static partial class Asn1Serializer
                     needElement = false;
                     continue;
                 }
-                parent.Tag.Children.Add(completed);
+                frames.Top.Tag.Children.Add(completed);
             }
 
             ref var top = ref frames.Top;
@@ -305,24 +313,47 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Reads the identifier and length of the next element. When the element's children have to be read,
-    /// a frame is pushed onto <paramref name="frames"/> and <see langword="true"/> is returned; any other
-    /// element is parsed completely and returned through <paramref name="completed"/>.
+    /// Reads the identifier and length of the next element. A complete element (or a failure) is returned
+    /// through <paramref name="completed"/>; an element whose children have to be read is pushed onto
+    /// <paramref name="frames"/>.
     /// </summary>
-    private static bool BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames, out ITag? completed)
+    private static Step BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames, out ITag? completed)
     {
         completed = null;
+        var elementStart = stream.Position;
         var tagNumber = stream.ReadByte();
+        var inIndefinite = frames.Count > 0 && frames.Top.IsIndefinite;
         if (tagNumber == -1)
         {
-            return false;
+            if (inIndefinite)
+            {
+                error = $"Indefinite-length container at offset {frames.Top.Start} has no end-of-contents marker";
+            }
+            return Step.Completed;
         }
-        var tag = tagFactory.Create(tagNumber);
         long? length = DecodeLength(stream, out var valid);
         if (!valid)
         {
-            return false;
+            return Step.Completed;
         }
+
+        if (tagNumber == 0)
+        {
+            if (inIndefinite)
+            {
+                if (length == 0)
+                    return Step.EndOfContents;
+                error = $"Invalid end-of-contents marker at offset {elementStart}";
+                return Step.Completed;
+            }
+            if (frames.Count > 0 && frames.Top.Kind == FrameKind.Probe)
+            {
+                // EOC cannot be content, so this OCTET STRING does not wrap nested elements.
+                frames.Top.ContainsEoc = true;
+            }
+        }
+
+        var tag = tagFactory.Create(tagNumber);
         var start = stream.Position;
 
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
@@ -338,24 +369,24 @@ public static partial class Asn1Serializer
         }
 
         completed = FinishElement(stream, ref error, tag, start, length);
-        return false;
+        return Step.Completed;
     }
 
     /// <summary>
     /// Pushes the frame. A definite-length frame is first checked to fit inside the stream;
     /// when it does not, it is ended unsuccessfully at once.
     /// </summary>
-    private static bool OpenFrame(Stream stream, ref string? error, FrameStack frames, ContainerFrame frame, out ITag? completed)
+    private static Step OpenFrame(Stream stream, ref string? error, FrameStack frames, ContainerFrame frame, out ITag? completed)
     {
         if (!frame.IsIndefinite && frame.End > stream.Length)
         {
             error = $"Container at offset {frame.Start} has a length of {frame.Length}, which is past the end of the stream";
             completed = EndFrame(stream, ref error, in frame, success: false);
-            return false;
+            return Step.Completed;
         }
         frames.Push(frame);
         completed = null;
-        return true;
+        return Step.Opened;
     }
 
     /// <summary>
@@ -371,23 +402,13 @@ public static partial class Asn1Serializer
             return frame.IsIndefinite ? frame.Tag : FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
         }
 
-        if (!success || HasEocChild(frame.Tag))
+        if (!success || frame.ContainsEoc)
         {
             // Not a complete run of nested elements: keep the content as raw bytes.
             frame.Tag.Children.Clear();
             stream.Position = frame.Start;
         }
         return FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
-    }
-
-    private static bool HasEocChild(ITag tag)
-    {
-        foreach (var child in tag.Children)
-        {
-            if (child.IsEoc)
-                return true;
-        }
-        return false;
     }
 
     /// <summary>

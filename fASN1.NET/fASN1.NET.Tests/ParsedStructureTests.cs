@@ -234,6 +234,35 @@ public class ParsedStructureTests
     }
 
     [Fact]
+    public void Indefinite_InvalidChild_FailsTheDocument()
+    {
+        // The second INTEGER claims 5 bytes; it must not be dropped quietly.
+        AssertFails("30 80 02 01 05 02 05 01 00 00", "Content size is not correct for tag Integer at offset 7");
+    }
+
+    [Fact]
+    public void Indefinite_MissingEndOfContents_Fails()
+    {
+        AssertFails("30 80 02 01 05", "Indefinite-length container at offset 2 has no end-of-contents marker");
+        AssertFails("30 80 30 80 02 01 05 00 00", "Indefinite-length container at offset 2 has no end-of-contents marker");
+    }
+
+    [Fact]
+    public void Indefinite_EndOfContentsWithLength_Fails()
+    {
+        AssertFails("30 80 00 01 05 00 00", "Invalid end-of-contents marker at offset 2");
+    }
+
+    [Fact]
+    public void Indefinite_EndsOnlyAtEndOfContentsBytes()
+    {
+        // A constructed OCTET STRING (0x24) is an Unknown tag that reports IsEoc (a tag-class bug, see
+        // KnownQuirkTests); it must still be an ordinary child and must not end the SEQUENCE.
+        var unknown = new Expected(typeof(Unknown), 0, "Unknown_4", 0, true, true, true, [], [Octets("41")]);
+        AssertTree("30 80 24 80 04 01 41 00 00 02 01 05 00 00", Seq(unknown, Int("05")));
+    }
+
+    [Fact]
     public void Indefinite_PrimitiveTag_Fails()
     {
         AssertFails("02 80 01 00 00", "Cannot skip over an invalid tag with indefinite length");
@@ -279,6 +308,13 @@ public class ParsedStructureTests
     public void Probe_Failure_KeepsRawContent(string hex, string content)
     {
         AssertTree(hex, Octets(content));
+    }
+
+    [Fact]
+    public void Probe_UnknownChildIsNotEoc()
+    {
+        var unknown = new Expected(typeof(Unknown), 0, "Unknown_13", 0, false, true, true, [0x07], []);
+        AssertTree("04 03 0D 01 07", OctetsWith(unknown));
     }
 
     [Fact]

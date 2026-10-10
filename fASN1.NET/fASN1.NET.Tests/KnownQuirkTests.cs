@@ -22,15 +22,6 @@ public class KnownQuirkTests
     }
 
     [Fact]
-    public void InvalidChildInsideIndefiniteContainer_IsDroppedSilently()
-    {
-        // The second INTEGER claims 5 bytes; the indefinite loop treats the failure like EOC.
-        var tag = Parse("30 80 02 01 05 02 05 01 00 00");
-
-        Seq(Int("05")).AssertMatches(tag);
-    }
-
-    [Fact]
     public void FiveByteLength_OverflowsToZero()
     {
         Octets("").AssertMatches(Parse("04 85 01 00 00 00 00"));
@@ -53,18 +44,6 @@ public class KnownQuirkTests
         Assert.IsType<Unknown>(tag);
         Assert.True(tag.IsEoc);
         Assert.Single(tag.Children);
-    }
-
-    [Fact]
-    public void UnknownUniversalTag_EndsEnclosingIndefiniteContainer()
-    {
-        var data = H("30 80 24 80 04 01 41 00 00 02 01 05 00 00");
-        Contract.Check(data);
-
-        // The Unknown child reports IsEoc, so the SEQUENCE ends at it and every following tag is dropped.
-        Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out _));
-        Assert.IsType<Sequence>(tag);
-        Assert.Empty(tag.Children);
     }
 
     [Fact]

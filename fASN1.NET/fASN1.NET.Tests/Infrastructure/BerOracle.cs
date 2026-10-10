@@ -55,7 +55,8 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
         try
         {
             children = ReadAll(content);
-            return children.Count > 0;
+            // EOC cannot be content, so a direct EOC child means this is not a run of elements.
+            return children.Count > 0 && !children.Any(c => c.Identifier == 0x00);
         }
         catch (AsnContentException)
         {

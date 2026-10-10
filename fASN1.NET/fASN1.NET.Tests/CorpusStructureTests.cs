@@ -13,22 +13,10 @@ public class CorpusStructureTests
     public static IEnumerable<object[]> Names => TestCorpus.Names;
     public static IEnumerable<object[]> DerNames => TestCorpus.DerNames;
 
-    /// <summary>
-    /// Samples the oracle cannot describe yet because of a known parser bug.
-    /// </summary>
-    private static readonly Dictionary<string, string> KnownOracleMismatches = new()
-    {
-        ["file:cms_signed_ber_indefinite"] =
-            "Contains a constructed OCTET STRING (0x24); the parser builds an Unknown tag that reports IsEoc=true " +
-            "and ends the enclosing indefinite-length container early. See KnownQuirkTests.UnknownUniversalTag_IsReportedAsEoc.",
-    };
-
     [Theory]
     [MemberData(nameof(Names))]
     public void Parse_EveryNodeMatchesOracle(string name)
     {
-        if (KnownOracleMismatches.ContainsKey(name))
-            return; // covered by the dedicated quirk test, and by the differential tests
         var data = TestCorpus.Get(name);
         var oracle = OracleNode.Decode(data);
 
@@ -56,20 +44,6 @@ public class CorpusStructureTests
             var data = TestCorpus.Get(name);
             var serialized = Asn1Serializer.Serialize(Asn1Serializer.Deserialize(data));
             Assert.False(data.AsSpan().SequenceEqual(serialized), $"{name} now round-trips; remove it from {nameof(KnownSerializationMismatches)}.");
-        }
-    }
-
-    [Fact]
-    public void KnownOracleMismatches_StillMismatch()
-    {
-        // When a known bug is fixed this test fails, as a reminder to remove the entry above.
-        foreach (var name in KnownOracleMismatches.Keys)
-        {
-            var data = TestCorpus.Get(name);
-            var oracle = OracleNode.Decode(data);
-            var ok = Asn1Serializer.TryDeserialize(data, out var tag, out _);
-            var matches = ok && Record.Exception(() => oracle.AssertMatches(tag!)) is null;
-            Assert.False(matches, $"{name} now matches the oracle; remove it from {nameof(KnownOracleMismatches)}.");
         }
     }
 
@@ -124,8 +98,6 @@ public class CorpusStructureTests
     [MemberData(nameof(Names))]
     public void Parse_TrailingBytesDoNotChangeTheTree(string name)
     {
-        if (KnownOracleMismatches.ContainsKey(name))
-            return; // the early-terminated container reads into the appended bytes
         var data = TestCorpus.Get(name);
         var expected = Asn1Serializer.Deserialize(data);
 
