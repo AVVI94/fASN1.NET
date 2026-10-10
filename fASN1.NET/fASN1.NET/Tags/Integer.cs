@@ -1,6 +1,5 @@
 using System;
-using System.Diagnostics;
-
+using System.Numerics;
 
 namespace fASN1.NET.Tags;
 
@@ -14,39 +13,43 @@ public class Integer : TagBase
     public Integer(byte[]? content = null) : base(content)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(int value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(int value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(long value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(long value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(short value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(short value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(uint value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(uint value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(ushort value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(ushort value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the big-endian bytes of <paramref name="value"/>, with leading zero bytes removed.</summary>
-    /// <param name="value">The value.</param>
-    public Integer(ulong value) : this(Convert(BitConverter.GetBytes(value)))
+
+    /// <inheritdoc cref="Integer(BigInteger)"/>
+    public Integer(ulong value) : this((BigInteger)value)
     {
     }
-    /// <summary>Creates the tag from the bytes of <see cref="System.Numerics.BigInteger.ToByteArray()"/>, used as they are.</summary>
+
+    /// <summary>
+    /// Creates the tag holding <paramref name="value"/> in the DER form: two's complement, big-endian, in the
+    /// fewest bytes. A positive value whose top bit would be set gets a leading 0x00 byte, so 128 is <c>00 80</c>.
+    /// </summary>
     /// <param name="value">The value.</param>
-    public Integer(System.Numerics.BigInteger value) : this(value.ToByteArray())
+    public Integer(BigInteger value) : this(Encode(value))
     {
     }
 
@@ -59,30 +62,11 @@ public class Integer : TagBase
     /// <inheritdoc/>
     public override bool IsConstructed => false;
 
-    private static byte[] Convert(byte[] value)
+    private static byte[] Encode(BigInteger value)
     {
-        var span = value.AsSpan();
-        if (BitConverter.IsLittleEndian)
-        {
-            span.Reverse();
-        }
-
-        bool allZero = true;
-        int i = -1;
-        foreach (var c in span)
-        {
-            i++;
-            if (c != 0)
-            {
-                allZero = false;
-                break;
-            }
-        }
-        if (allZero)
-        {
-            return [0];
-        }
-        Debug.Assert(i < span.Length);
-        return span.Slice(i).ToArray();
+        // ToByteArray gives the shortest two's-complement form, least significant byte first.
+        var bytes = value.ToByteArray();
+        Array.Reverse(bytes);
+        return bytes;
     }
 }
