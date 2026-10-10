@@ -170,14 +170,8 @@ public static partial class Asn1Serializer
 
         if (tag.TagNumber == (int)Tag.ObjectIdentifier)
         {
-            try
-            {
-                lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
-            }
-            catch (Exception)
-            {
-                lastObjectIdentifier = ""; // malformed, so it names nothing
-            }
+            // A malformed OID names nothing.
+            lastObjectIdentifier = Oid.OidEncoder.TryGetString(tag.Content, out var oid) ? oid : "";
         }
     }
 

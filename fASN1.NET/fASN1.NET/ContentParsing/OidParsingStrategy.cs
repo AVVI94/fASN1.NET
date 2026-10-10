@@ -10,7 +10,9 @@ public class OidParsingStrategy : IContentParsingStrategy
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
-        var oid = OID.GetOrCreate(content);
+        if (!OidEncoder.TryGetString(content, out var value))
+            return OctetStringParsingStrategy.ToHex(content); // not a valid encoding
+        var oid = OID.GetOrCreate(value);
         return $"{oid.Value}{(string.IsNullOrEmpty(oid.FriendlyName) ? "" : $", {oid.FriendlyName}")}{(string.IsNullOrEmpty(oid.Comment) ? "" : $" ({oid.Comment})")}";
     }
 

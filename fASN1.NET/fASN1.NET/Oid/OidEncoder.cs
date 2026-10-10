@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Numerics;
 using System.Text;
 
 namespace fASN1.NET.Oid;
 
 /// <summary>
-/// Provides methods for encoding and decoding Object Identifier (OID) values.
+/// Converts OBJECT IDENTIFIER values between the dotted text form (<c>1.2.840.113549</c>) and the content bytes
+/// of their encoding (X.690 §8.19). Arcs may be arbitrarily large, as in the UUID arcs under <c>2.25</c>.
 /// </summary>
 public static class OidEncoder
 {
@@ -14,17 +18,66 @@ public static class OidEncoder
     /// </summary>
     /// <param name="oid">The byte array representing the OID.</param>
     /// <returns>The string representation of the OID.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when the <paramref name="oid"/> is null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when the <paramref name="oid"/> is null or empty.</exception>
+    /// <exception cref="ArgumentException">
+    /// The bytes are not a valid encoding: the last arc is unterminated, or an arc has a leading 0x80 byte.
+    /// </exception>
     public static string GetString(byte[] oid)
     {
         if (oid is null || oid.Length == 0)
         {
             throw new ArgumentNullException(nameof(oid));
         }
+        if (!TryGetString(oid, out var value))
+        {
+            throw new ArgumentException("The bytes are not a valid OBJECT IDENTIFIER encoding.", nameof(oid));
+        }
+        return value;
+    }
 
-        var oidString = ConvertBytesToOidString(oid);
+    /// <summary>
+    /// Converts the content bytes of an OID to its dotted text form, or returns <see langword="false"/> when they
+    /// are not a valid encoding.
+    /// </summary>
+    /// <param name="oid">The content bytes.</param>
+    /// <param name="value">The dotted text form.</param>
+    /// <returns><see langword="true"/> if the bytes are a valid encoding; otherwise, <see langword="false"/>.</returns>
+    public static bool TryGetString(byte[]? oid, [NotNullWhen(true)] out string? value)
+    {
+        value = null;
+        if (oid is null || oid.Length == 0)
+            return false;
 
-        return oidString;
+        var text = new StringBuilder(oid.Length * 3);
+        var pos = 0;
+        while (pos < oid.Length)
+        {
+            if (!TryReadArc(oid, ref pos, out var small, out var big))
+                return false;
+
+            if (text.Length == 0)
+            {
+                // The first subidentifier packs the first two arcs as 40 * X + Y, where X is 0, 1 or 2 and Y is
+                // below 40 unless X is 2; so values from 80 up are all under arc 2 (X.690 §8.19.4).
+                if (big is null && small < 80)
+                    text.Append(small / 40).Append('.').Append(small % 40);
+                else if (big is null)
+                    text.Append("2.").Append(small - 80);
+                else
+                    text.Append("2.").Append((big.Value - 80).ToString(CultureInfo.InvariantCulture));
+            }
+            else if (big is null)
+            {
+                text.Append('.').Append(small);
+            }
+            else
+            {
+                text.Append('.').Append(big.Value.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
+        value = text.ToString();
+        return true;
     }
 
     /// <summary>
@@ -32,110 +85,114 @@ public static class OidEncoder
     /// </summary>
     /// <param name="oid">The string representation of the OID.</param>
     /// <returns>The byte array representation of the OID.</returns>
-    /// <exception cref="ArgumentException">Thrown when the <paramref name="oid"/> is null, empty, or whitespace, or when the OID has less than two components.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when the <paramref name="oid"/> is null, empty, or whitespace, or is not a valid OID: fewer than two
+    /// arcs, an arc that is not a decimal number without sign or leading zeros, a first arc above 2, or a second
+    /// arc above 39 under the first arcs 0 and 1.
+    /// </exception>
     public static byte[] GetBytes(string oid)
     {
         if (string.IsNullOrWhiteSpace(oid))
         {
             throw new ArgumentException($"'{nameof(oid)}' cannot be null or whitespace.", nameof(oid));
         }
-
-        var split = oid.Split('.');
-        if (split.Length < 2)
+        if (!TryGetBytes(oid, out var bytes))
         {
-            throw new ArgumentException("OID must have at least two components.");
+            throw new ArgumentException($"'{oid}' is not a valid OBJECT IDENTIFIER.", nameof(oid));
         }
-
-        int int1 = int.Parse(split[0]);
-        int int2 = int.Parse(split[1]);
-
-        List<byte> res = [(byte)(40 * int1 + int2)];
-
-        for (int i = 2; i < split.Length; i++)
-        {
-            var x = long.Parse(split[i]);
-
-            int numBytes = 1;
-            long temp = x;
-
-            // Calculate the number of bytes needed
-            while ((temp >>= 7) > 0)
-            {
-                numBytes++;
-            }
-
-            // Insert bytes from the end
-            for (int j = numBytes - 1; j >= 0; j--)
-            {
-                byte b = (byte)((x >> (7 * j)) & 0x7F);
-                if (j != 0)
-                {
-                    b |= 0x80; // Set the MSB of each byte except the last one
-                }
-                res.Add(b);
-            }
-        }
-
-        return [.. res];
+        return bytes;
     }
 
-    private static string ConvertBytesToOidString(byte[] bytes)
+    /// <summary>
+    /// Converts the dotted text form of an OID to its content bytes, or returns <see langword="false"/> when the
+    /// text is not a valid OID (see <see cref="GetBytes"/>).
+    /// </summary>
+    /// <param name="oid">The dotted text form.</param>
+    /// <param name="bytes">The content bytes.</param>
+    /// <returns><see langword="true"/> if the text is a valid OID; otherwise, <see langword="false"/>.</returns>
+    public static bool TryGetBytes(string? oid, [NotNullWhen(true)] out byte[]? bytes)
     {
-        StringBuilder oid = new();
-        int bufferValue = 0;
-        bool isBuffering = false;
+        bytes = null;
+        if (oid is null)
+            return false;
 
-        // The numerical value of the first subidentifier is derived from the values of the first two object identifier
-        // components in the object identifier value being encoded, using the formula:
-        // (X * 40) + Y
-        // where X is the value of the first object identifier component and Y is the value of the second object identifier
-        // component.
-        // NOTE – This packing of the first two object identifier components recognizes that only three values are allocated from the root
-        // node, and at most 39 subsequent values from nodes reached by X = 0 and X = 1.
-        int firstByte = bytes[0];
-        if (firstByte > 79)
+        var arcs = oid.Split('.');
+        if (arcs.Length < 2)
+            return false;
+
+        var values = new BigInteger[arcs.Length];
+        for (int i = 0; i < arcs.Length; i++)
         {
-            _ = oid.Append(2)
-                   .Append('.')
-                   .Append(firstByte - 80);
+            if (!TryParseArc(arcs[i], out values[i]))
+                return false;
         }
-        else
+        if (values[0] > 2 || (values[0] < 2 && values[1] > 39))
+            return false;
+
+        var result = new List<byte>(arcs.Length * 2);
+        WriteArc(result, (values[0] * 40) + values[1]);
+        for (int i = 2; i < values.Length; i++)
         {
-            _ = oid.Append(firstByte / 40)
-                   .Append('.')
-                   .Append(firstByte % 40);
+            WriteArc(result, values[i]);
         }
+        bytes = result.ToArray();
+        return true;
+    }
 
-        for (int i = 1; i < bytes.Length; i++)
+    /// <summary>Reads one base-128 subidentifier; <paramref name="big"/> is set when it does not fit a ulong.</summary>
+    private static bool TryReadArc(byte[] bytes, ref int pos, out ulong small, out BigInteger? big)
+    {
+        small = 0;
+        big = null;
+        // A leading 0x80 adds nothing but a zero group, which X.690 §8.19.2 forbids.
+        if (bytes[pos] == 0x80)
+            return false;
+
+        while (pos < bytes.Length)
         {
-            int currentByte = bytes[i];
+            var b = bytes[pos++];
+            if (big is null && small > ulong.MaxValue >> 7)
+                big = small;
 
-            if (currentByte > 127)
-            {
-                // If the current byte is part of a multi-byte number, accumulate its value
-                bufferValue = (bufferValue << 7) | (currentByte & 0x7F);
-                isBuffering = true;
-            }
+            if (big is null)
+                small = (small << 7) | (uint)(b & 0x7F);
             else
-            {
-                if (isBuffering)
-                {
-                    // If we were buffering, this byte is the last part of the multi-byte number
-                    bufferValue = (bufferValue << 7) | currentByte;
-                    _ = oid.Append('.')
-                           .Append(bufferValue);
-                    bufferValue = 0;
-                    isBuffering = false;
-                }
-                else
-                {
-                    // Single byte number, directly append to OID
-                    _ = oid.Append('.')
-                           .Append(currentByte);
-                }
-            }
-        }
+                big = (big.Value << 7) | (b & 0x7F);
 
-        return oid.ToString();
+            if ((b & 0x80) == 0)
+                return true;
+        }
+        return false; // the last byte still had the continuation bit: the arc is unterminated
+    }
+
+    private static bool TryParseArc(string text, out BigInteger value)
+    {
+        value = default;
+        if (text.Length == 0 || (text.Length > 1 && text[0] == '0'))
+            return false;
+        foreach (var c in text)
+        {
+            if (c is < '0' or > '9')
+                return false;
+        }
+        value = BigInteger.Parse(text, NumberStyles.None, CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    /// <summary>Writes <paramref name="value"/> base 128, most significant group first, with the continuation bit on every byte but the last.</summary>
+    private static void WriteArc(List<byte> destination, BigInteger value)
+    {
+        var start = destination.Count;
+        do
+        {
+            destination.Add((byte)(value & 0x7F));
+            value >>= 7;
+        }
+        while (!value.IsZero);
+        destination.Reverse(start, destination.Count - start);
+        for (int i = start; i < destination.Count - 1; i++)
+        {
+            destination[i] |= 0x80;
+        }
     }
 }
