@@ -4,39 +4,42 @@ using System.Text;
 namespace fASN1.NET.ContentParsing;
 
 /// <summary>
-/// Shows content as UTF-8 text when it has no control characters other than tab, line feed and carriage return; otherwise as uppercase hexadecimal. Also used for every non-universal tag.
+/// Shows content as text when it is valid UTF-8 with no control characters other than tab, line feed and
+/// carriage return; otherwise as uppercase hexadecimal. Also used for every non-universal tag.
 /// </summary>
+/// <remarks>
+/// This is a display heuristic: binary data that happens to be printable UTF-8 is shown as text. Code that needs
+/// the value should read <see cref="Tags.ITag.Content"/>, not this text.
+/// </remarks>
 public class OctetStringParsingStrategy : IContentParsingStrategy
 {
-    private const int SPACE_CHAR_CODE = 32;
-    private const int TAB_CHAR_CODE = 9;
-    private const int LF_CHAR_CODE = 10;
-    private const int CR_CHAR_CODE = 13;
+    private static readonly UTF8Encoding _strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <inheritdoc/>
-
     public string Parse(byte[] content)
     {
-        var sb = new StringBuilder();
-        var s = Encoding.UTF8.GetString(content);
-        for (var i = 0; i < s.Length; ++i)
+        string text;
+        try
         {
-            var c = s[i];
-            if ((int)c
-                is < SPACE_CHAR_CODE
-                and not TAB_CHAR_CODE
-                and not LF_CHAR_CODE
-                and not CR_CHAR_CODE)
-            {
-                //throw new Exception("Unprintable character");
-                return BitConverter.ToString(content).Replace("-", "");
-            }
-            _ = sb.Append(c);
+            text = _strictUtf8.GetString(content);
         }
-        return sb.ToString();
+        catch (DecoderFallbackException)
+        {
+            // Invalid UTF-8 used to decode to U+FFFD, which passed as printable and turned binary data into garbage text.
+            return ToHex(content);
+        }
+
+        foreach (var c in text)
+        {
+            if (char.IsControl(c) && c is not '\t' and not '\n' and not '\r')
+                return ToHex(content);
+        }
+        return text;
     }
 
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    /// <summary>The bytes as uppercase hexadecimal with no separators.</summary>
+    internal static string ToHex(byte[] content) => BitConverter.ToString(content).Replace("-", "");
 
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
     public static OctetStringParsingStrategy Default { get; } = new OctetStringParsingStrategy();
 }

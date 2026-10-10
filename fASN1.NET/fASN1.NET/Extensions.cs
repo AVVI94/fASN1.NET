@@ -294,10 +294,10 @@ public static partial class Extensions
                             san.Add(new OtherName(OID.GetOrCreate(sanItem.Children[0].Content), sanItem.Children[1].Children[0]));
                         break;
                     case "[1]":
-                        san.Add(new Rfc822Name(sanItem.ContentToString()));
+                        san.Add(new Rfc822Name(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
                         break;
                     case "[2]":
-                        san.Add(new DnsName(sanItem.ContentToString()));
+                        san.Add(new DnsName(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
                         break;
                     case "[3]":
                         san.Add(new X400Address(sanItem.Children[0]));
@@ -309,10 +309,10 @@ public static partial class Extensions
                         san.Add(new EdiPartyName(sanItem.Children[0]));
                         break;
                     case "[6]":
-                        san.Add(new UniformResourceIdentifier(sanItem.ContentToString()));
+                        san.Add(new UniformResourceIdentifier(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
                         break;
                     case "[7]":
-                        san.Add(new IPAddress(sanItem.ContentToString()));
+                        san.Add(new IPAddress(sanItem.Content));
                         break;
                     case "[8]":
                         san.Add(new RegisteredID(OID.GetOrCreate(sanItem.Children[0].Content)));
@@ -396,8 +396,11 @@ public static partial class Extensions
     /// Attempts to get the Authority Key Identifier from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="authorityKeyIdentifier">The Authority Key Identifier string.</param>
-    /// <returns><see langword="true"/> if the Authority Key Identifier was found; otherwise, <see langword="false"/>.</returns>
+    /// <param name="authorityKeyIdentifier">The key identifier as uppercase hexadecimal.</param>
+    /// <returns>
+    /// <see langword="true"/> if the certificate has an Authority Key Identifier extension with a keyIdentifier;
+    /// otherwise (also when the extension names the issuer only by name and serial number), <see langword="false"/>.
+    /// </returns>
     public static bool TryGetAuthorityKeyIdentifier(this ITag tag, out string? authorityKeyIdentifier)
     {
         authorityKeyIdentifier = null;
@@ -411,9 +414,16 @@ public static partial class Extensions
                 if (!ext.Children[0].Content.SequenceEqual(_authorityKeyIdentifierOidSequence))
                     continue;
 
-                var akid = ext.Children[1].Children[0].Children[0];
-                authorityKeyIdentifier = akid.ContentToString();
-                return true;
+                // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] IMPLICIT OCTET STRING OPTIONAL, ... }
+                foreach (var field in GetExtensionValue(ext).Children[0].Children)
+                {
+                    if (field.TagClass == 2 && (field.TagNumber & 0x1F) == 0)
+                    {
+                        authorityKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(field));
+                        return true;
+                    }
+                }
+                return false;
             }
             return false;
         }
@@ -427,7 +437,7 @@ public static partial class Extensions
     /// Attempts to get the Subject Key Identifier from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="subjectKeyIdentifier">The Subject Key Identifier string.</param>
+    /// <param name="subjectKeyIdentifier">The key identifier as uppercase hexadecimal.</param>
     /// <returns><see langword="true"/> if the Subject Key Identifier was found; otherwise, <see langword="false"/>.</returns>
     public static bool TryGetSubjectKeyIdentifier(this ITag tag, out string? subjectKeyIdentifier)
     {
@@ -442,8 +452,8 @@ public static partial class Extensions
                 if (!ext.Children[0].Content.SequenceEqual(_subjectKeyIdentifierOidSequence))
                     continue;
 
-                var skid = ext.Children[1].Children[0];
-                subjectKeyIdentifier = skid.ContentToString();
+                // SubjectKeyIdentifier ::= KeyIdentifier ::= OCTET STRING
+                subjectKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(GetExtensionValue(ext).Children[0]));
                 return true;
             }
             return false;

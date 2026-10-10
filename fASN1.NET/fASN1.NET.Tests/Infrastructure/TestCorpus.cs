@@ -127,6 +127,21 @@ internal static class TestCorpus
                 yield return ("rsa_csr_" + name, req.CreateSigningRequest());
         }
 
+        // Binary values that look like something else: key identifiers that are printable text or valid DER, an
+        // IPv4 address whose bytes spell "ABCD", and an authority key identifier with no keyIdentifier.
+        var oddSan = new SubjectAlternativeNameBuilder();
+        oddSan.AddIpAddress(IPAddress.Parse("65.66.67.68"));
+        oddSan.AddIpAddress(IPAddress.Parse("10.0.0.1"));
+        foreach (var (name, keyId) in new (string, byte[])[] { ("text", "KEYID-TEXT"u8.ToArray()), ("der", [0x30, 0x03, 0x02, 0x01, 0x05]) })
+        {
+            var oddReq = new CertificateRequest("CN=odd.example.test", leafKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            oddReq.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(keyId, false));
+            oddReq.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromIssuerNameAndSerialNumber(ca.SubjectName, [0x01, 0x02]));
+            oddReq.CertificateExtensions.Add(oddSan.Build());
+            using var odd = oddReq.Create(ca.SubjectName, X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1), _notBefore, _notAfter, [0x05]);
+            yield return ("rsa_leaf_keyid_" + name, odd.RawData);
+        }
+
         var ecReq = new CertificateRequest("CN=ec.example.test, O=fASN1", ecKey, HashAlgorithmName.SHA384);
         ecReq.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
         ecReq.CertificateExtensions.Add(san.Build());

@@ -182,9 +182,38 @@ public class IPAddress : ISanItem
     public IPAddress(string content)
     {
         Content = content;
+        Bytes = [];
     }
+
+    /// <summary>Creates the item from the address bytes of an iPAddress name.</summary>
+    /// <param name="address">
+    /// 4 bytes for IPv4 or 16 for IPv6; 8 or 32 bytes are an address followed by a subnet mask, as in name constraints.
+    /// </param>
+    public IPAddress(byte[] address)
+    {
+        Bytes = address;
+        Content = address.Length switch
+        {
+            4 or 16 => new System.Net.IPAddress(address).ToString(),
+            8 or 32 => new System.Net.IPAddress(Half(address, 0)) + "/" + new System.Net.IPAddress(Half(address, 1)),
+            _ => ContentParsing.OctetStringParsingStrategy.ToHex(address),
+        };
+    }
+
+    private static byte[] Half(byte[] bytes, int index)
+    {
+        var half = new byte[bytes.Length / 2];
+        System.Array.Copy(bytes, index * half.Length, half, 0, half.Length);
+        return half;
+    }
+
     public SanItemKind Kind => SanItemKind.IPAddress;
+
+    /// <summary>The address in text form, such as <c>192.0.2.1</c> or <c>2001:db8::1</c>; hexadecimal for an invalid length.</summary>
     public string Content { get; }
+
+    /// <summary>The address bytes as encoded; empty when the item was created from text.</summary>
+    public byte[] Bytes { get; }
 }
 /// <summary>
 /// RegisteredID SAN Item

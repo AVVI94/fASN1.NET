@@ -94,6 +94,30 @@ internal static class InternalExtensions
         }
     }
 
+    /// <summary>
+    /// The extnValue OCTET STRING of an extension: <c>SEQUENCE { extnID, critical BOOLEAN DEFAULT FALSE, extnValue }</c>,
+    /// so it is the last child whether or not the critical flag is present.
+    /// </summary>
+    public static ITag GetExtensionValue(ITag extension) => extension.Children[extension.Children.Count - 1];
+
+    /// <summary>
+    /// The content bytes of a primitive element as they were in the input. An OCTET STRING read as encapsulated
+    /// children has empty <see cref="ITag.Content"/>; its bytes are those children serialized, which the parser
+    /// guarantees is the original encoding.
+    /// </summary>
+    public static byte[] GetRawContent(ITag tag)
+    {
+        if (tag.Children.Count == 0)
+            return tag.Content;
+
+        var bytes = new List<byte>();
+        foreach (var child in tag.Children)
+        {
+            bytes.AddRange(Asn1Serializer.Serialize(child));
+        }
+        return bytes.ToArray();
+    }
+
     private static ITag? GetRequestAttributesTag(ITag topLevelCertRequestTag)
     {
         var certRequestInfo = topLevelCertRequestTag.Children[0];
