@@ -191,7 +191,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// An element whose children are being read.
     /// </summary>
-    private sealed class ContainerFrame(FrameKind kind, ITag tag, long start, long childrenStart, long? length)
+    private struct ContainerFrame(FrameKind kind, ITag tag, long start, long childrenStart, long? length)
     {
         public FrameKind Kind { get; } = kind;
 
@@ -227,96 +227,140 @@ public static partial class Asn1Serializer
     /// </summary>
     private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
     {
-        var frames = new Stack<ContainerFrame>();
-        var needElement = true;
-        ITag? completed = null;
-        ContainerFrame? abortedFrame = null;
+        var frames = new FrameStack();
+        ContainerFrame? aborted = null;
         while (true)
         {
             try
             {
-                if (abortedFrame is not null)
-                {
-                    // An exception ended this indefinite-length frame's children; see the catch below.
-                    var frame = abortedFrame;
-                    abortedFrame = null;
-                    completed = EndFrame(stream, ref error, frame, success: false);
-                    needElement = false;
-                }
-
-                if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
-                {
-                    // A frame was opened; continue below with its first child.
-                }
-                else
-                {
-                    // `completed` is a finished element, or null when it failed. Hand it to its parent.
-                    if (frames.Count == 0)
-                    {
-                        return completed;
-                    }
-                    var parent = frames.Peek();
-                    if (parent.IsIndefinite)
-                    {
-                        if (completed is null or { IsEoc: true })
-                        {
-                            // EOC ends the children. So does a failed child, which is dropped without an error.
-                            frames.Pop();
-                            parent.Length = stream.Position - parent.ChildrenStart;
-                            completed = EndFrame(stream, ref error, parent, success: true);
-                            needElement = false;
-                            continue;
-                        }
-                    }
-                    else if (completed is null)
-                    {
-                        // A failed child ends the frame unsuccessfully, rewound to its first child.
-                        stream.Position = parent.ChildrenStart;
-                        completed = EndFrame(stream, ref error, frames.Pop(), success: false);
-                        needElement = false;
-                        continue;
-                    }
-                    parent.Tag.Children.Add(completed);
-                }
-
-                var top = frames.Peek();
-                if (top.IsIndefinite || stream.Position < top.End)
-                {
-                    needElement = true;
-                    continue;
-                }
-
-                frames.Pop();
-                needElement = false;
-                var exact = stream.Position == top.End;
-                if (!exact)
-                {
-                    error = $"Content size is not correct for container at offset {top.ChildrenStart}";
-                }
-                completed = EndFrame(stream, ref error, top, exact);
+                return ParseLoop(stream, ref error, tagFactory, frames, aborted);
             }
-            catch (Exception) when (HasIndefiniteFrame(frames))
+            catch (Exception) when (frames.IndefiniteCount > 0)
             {
                 // The innermost indefinite-length frame absorbs the exception: everything opened inside
-                // it is abandoned, and the frame itself ends unsuccessfully on the next iteration.
-                while (!frames.Peek().IsIndefinite)
+                // it is abandoned, and the frame itself ends unsuccessfully when the loop resumes.
+                while (!frames.Top.IsIndefinite)
                 {
-                    frames.Pop();
+                    _ = frames.Pop();
                 }
-                abortedFrame = frames.Pop();
-                error = $"Exception while decoding undefined length content at offset {abortedFrame.ChildrenStart}";
+                var frame = frames.Pop();
+                aborted = frame;
+                error = $"Exception while decoding undefined length content at offset {frame.ChildrenStart}";
             }
         }
     }
 
-    private static bool HasIndefiniteFrame(Stack<ContainerFrame> frames)
+    /// <summary>
+    /// The parse loop itself, kept free of exception handlers so the JIT can keep its locals in registers.
+    /// </summary>
+    /// <remarks>
+    /// When resuming after an exception, <c>aborted</c> is the indefinite-length frame that absorbed it;
+    /// it is ended unsuccessfully before the loop continues with its parent.
+    /// </remarks>
+    private static ITag? ParseLoop(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames, ContainerFrame? aborted)
     {
-        foreach (var frame in frames)
+        var needElement = true;
+        ITag? completed = null;
+        if (aborted is { } abortedFrame)
         {
-            if (frame.IsIndefinite)
-                return true;
+            completed = EndFrame(stream, ref error, in abortedFrame, success: false);
+            needElement = false;
         }
-        return false;
+
+        while (true)
+        {
+            if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
+            {
+                // A frame was opened; continue below with its first child.
+            }
+            else
+            {
+                // `completed` is a finished element, or null when it failed. Hand it to its parent.
+                if (frames.Count == 0)
+                {
+                    return completed;
+                }
+                ref var parent = ref frames.Top;
+                if (parent.IsIndefinite)
+                {
+                    if (completed is null or { IsEoc: true })
+                    {
+                        // EOC ends the children. So does a failed child, which is dropped without an error.
+                        parent.Length = stream.Position - parent.ChildrenStart;
+                        var ended = frames.Pop();
+                        completed = EndFrame(stream, ref error, in ended, success: true);
+                        needElement = false;
+                        continue;
+                    }
+                }
+                else if (completed is null)
+                {
+                    // A failed child ends the frame unsuccessfully, rewound to its first child.
+                    stream.Position = parent.ChildrenStart;
+                    var failed = frames.Pop();
+                    completed = EndFrame(stream, ref error, in failed, success: false);
+                    needElement = false;
+                    continue;
+                }
+                parent.Tag.Children.Add(completed);
+            }
+
+            ref var top = ref frames.Top;
+            if (top.IsIndefinite || stream.Position < top.End)
+            {
+                needElement = true;
+                continue;
+            }
+
+            var done = frames.Pop();
+            needElement = false;
+            var exact = stream.Position == done.End;
+            if (!exact)
+            {
+                error = $"Content size is not correct for container at offset {done.ChildrenStart}";
+            }
+            completed = EndFrame(stream, ref error, in done, exact);
+        }
+    }
+
+    /// <summary>
+    /// Array-backed stack of frames that hands out the top frame by reference, so frames are not copied
+    /// on every access the way <see cref="Stack{T}.Peek"/> would copy them.
+    /// </summary>
+    private sealed class FrameStack
+    {
+        private ContainerFrame[] _items = new ContainerFrame[16];
+
+        public int Count { get; private set; }
+
+        /// <summary>Number of indefinite-length frames on the stack.</summary>
+        public int IndefiniteCount { get; private set; }
+
+        public ref ContainerFrame Top => ref _items[Count - 1];
+
+        public void Push(in ContainerFrame frame)
+        {
+            if (Count == _items.Length)
+            {
+                Array.Resize(ref _items, _items.Length * 2);
+            }
+            _items[Count++] = frame;
+            if (frame.IsIndefinite)
+            {
+                IndefiniteCount++;
+            }
+        }
+
+        public ContainerFrame Pop()
+        {
+            var frame = _items[--Count];
+            _items[Count] = default;
+            if (frame.IsIndefinite)
+            {
+                IndefiniteCount--;
+            }
+            return frame;
+        }
     }
 
     /// <summary>
@@ -324,7 +368,7 @@ public static partial class Asn1Serializer
     /// a frame is pushed onto <paramref name="frames"/> and <see langword="true"/> is returned; any other
     /// element is parsed completely and returned through <paramref name="completed"/>.
     /// </summary>
-    private static bool BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, Stack<ContainerFrame> frames, out ITag? completed)
+    private static bool BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames, out ITag? completed)
     {
         completed = null;
         var tagNumber = stream.ReadByte();
@@ -365,13 +409,13 @@ public static partial class Asn1Serializer
     /// Pushes the frame. A definite-length frame is first checked to fit inside the stream and inside the
     /// element itself; when it does not, it is ended unsuccessfully at once.
     /// </summary>
-    private static bool OpenFrame(Stream stream, ref string? error, Stack<ContainerFrame> frames, ContainerFrame frame, out ITag? completed)
+    private static bool OpenFrame(Stream stream, ref string? error, FrameStack frames, ContainerFrame frame, out ITag? completed)
     {
         // For a BIT STRING probe the children start one byte late, so End always passes Start + Length.
         if (!frame.IsIndefinite && (frame.End > stream.Length || frame.End > frame.Start + frame.Length))
         {
             error = $"Container at offset {frame.ChildrenStart} has a length of {frame.Length}, which is past the end of the stream";
-            completed = EndFrame(stream, ref error, frame, success: false);
+            completed = EndFrame(stream, ref error, in frame, success: false);
             return false;
         }
         frames.Push(frame);
@@ -382,7 +426,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Completes an element once its children have been read, successfully or not.
     /// </summary>
-    private static ITag? EndFrame(Stream stream, ref string? error, ContainerFrame frame, bool success)
+    private static ITag? EndFrame(Stream stream, ref string? error, in ContainerFrame frame, bool success)
     {
         if (frame.Kind == FrameKind.Container)
         {
