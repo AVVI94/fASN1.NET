@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -106,22 +107,17 @@ public class OID
     private string DebuggerDisplay => $"\"{Value}\"" + (string.IsNullOrEmpty(FriendlyName) ? "" : $" ({FriendlyName})");
 
     /// <summary>
-    /// Retrieves the OID from <see cref="OidDictionary"/> or creates a new OID and adds it to the dictionary
+    /// Returns the registered OID with this value, or a new OID with no friendly name when none is registered.
+    /// Unknown OIDs are not added to <see cref="OidDictionary"/>, so OIDs read from untrusted input cannot grow it.
+    /// Safe to call from any thread.
     /// </summary>
     /// <param name="oid">OID value</param>
     /// <returns><see cref="OID"/> object</returns>
     public static OID GetOrCreate(string oid)
-    {
-        if (OidDictionary.TryGetValue(oid, out var res))
-            return res;
-
-        var o = new OID(oid, "", "");
-        OidDictionary.Add(oid, o);
-        return o;
-    }
+        => KnownOids.Registry.TryGetValue(oid, out var known) ? known : new OID(oid, "", "");
 
     /// <summary>
-    /// Retrieves the OID from <see cref="OidDictionary"/> or creates a new OID and adds it to the dictionary
+    /// Returns the registered OID with this value, or a new OID with no friendly name when none is registered.
     /// </summary>
     /// <remarks>
     /// Internally calls the <see cref="GetOrCreate(string)"/> overload, prefer that one if you can to avoid the string allocation.
@@ -133,13 +129,33 @@ public class OID
     /// <returns><see cref="OID"/> object</returns>
     public static OID GetOrCreate(byte[] oid) => GetOrCreate(OidEncoder.GetString(oid));
 
-    private static Dictionary<string, OID>? _oidDictionary;
     /// <summary>
-    /// Dictionary of existing common OID objects, the key is OID string for example "2.5.29.29"
+    /// Adds <paramref name="oid"/> to <see cref="OidDictionary"/>, replacing any OID registered with the same value,
+    /// so <see cref="GetOrCreate(string)"/> and the text output show its friendly name. Safe to call from any thread.
     /// </summary>
-    public static Dictionary<string, OID> OidDictionary
+    /// <param name="oid">The OID to register.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="oid"/> is <see langword="null"/>.</exception>
+    public static void Register(OID oid)
     {
-        get => _oidDictionary ??= new Dictionary<string, OID>(){
+        if (oid is null)
+        {
+            throw new ArgumentNullException(nameof(oid));
+        }
+        KnownOids.Registry[oid.Value] = oid;
+    }
+
+    /// <summary>
+    /// The registered OIDs, keyed by value, for example "2.5.29.29". Use <see cref="Register"/> to add one.
+    /// </summary>
+    public static IReadOnlyDictionary<string, OID> OidDictionary => KnownOids.Registry;
+
+    /// <summary>Holds the registry, so it is built on first use rather than whenever <see cref="OID"/> is touched.</summary>
+    private static class KnownOids
+    {
+        public static readonly ConcurrentDictionary<string, OID> Registry = new(Create(), StringComparer.Ordinal);
+
+        private static Dictionary<string, OID> Create() => new()
+        {
 {"0.2.262.1.10",new OID("0.2.262.1.10","Telesec","Deutsche Telekom")},
 {"0.2.262.1.10.0",new OID("0.2.262.1.10.0","extension","Telesec")},
 {"0.2.262.1.10.1",new OID("0.2.262.1.10.1","mechanism","Telesec")},
