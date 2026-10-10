@@ -13,8 +13,12 @@ namespace fASN1.NET.Tests.Infrastructure;
 internal static class ReferenceRecursiveParser
 {
     public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+        => TryDeserialize(data, tagFactory, out tag, out error, out _);
+
+    public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error, out long finalPosition)
     {
         using var stream = new MemoryStream(data);
+        finalPosition = 0;
         try
         {
             error = null;
@@ -25,6 +29,7 @@ internal static class ReferenceRecursiveParser
                 return false;
             }
             tag = DeserializeInternal(stream, ref error, tagFactory);
+            finalPosition = stream.Position;
             if (tag is not null)
                 error = null;
             return tag is not null;
@@ -33,6 +38,7 @@ internal static class ReferenceRecursiveParser
         {
             tag = null;
             error = ex.Message;
+            finalPosition = stream.Position;
             return false;
         }
     }

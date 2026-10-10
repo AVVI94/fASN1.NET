@@ -18,14 +18,17 @@ internal static class Differential
         var refFactory = new RecordingFactory(factory());
         var prodFactory = new RecordingFactory(factory());
 
-        var refOk = ReferenceRecursiveParser.TryDeserialize(data, refFactory, out var refTag, out var refError);
-        var prodOk = Asn1Serializer.TryDeserialize(data, prodFactory, out var prodTag, out var prodError);
+        var refOk = ReferenceRecursiveParser.TryDeserialize(data, refFactory, out var refTag, out var refError, out var refPosition);
+        using var stream = new MemoryStream(data);
+        var prodOk = Asn1Serializer.TryDeserialize(stream, prodFactory, out var prodTag, out var prodError);
 
         try
         {
             Assert.Equal(refOk, prodOk);
             Assert.Equal(refError, prodError);
             Assert.Equal(refFactory.Calls, prodFactory.Calls);
+            if (data.Length > 0)
+                Assert.True(refPosition == stream.Position, $"stream left at {stream.Position}, reference left it at {refPosition}");
             if (refOk)
                 TreeAssert.Equal(refTag!, prodTag!);
         }
