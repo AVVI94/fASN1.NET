@@ -107,4 +107,61 @@ public class SerializeStructureTests
 
         Assert.Equal(H("30 03 02 01 05"), Asn1Serializer.Serialize(parsed));
     }
+
+    [Fact]
+    public void BitStringWithChildren_GetsTheUnusedBitsByte()
+    {
+        // A public key is a BIT STRING holding a DER structure; the leading 0x00 used to be left out.
+        var key = new Sequence([new Integer(5)]);
+
+        var serialized = Asn1Serializer.Serialize(new BitString(children: [key]));
+
+        var writer = new System.Formats.Asn1.AsnWriter(System.Formats.Asn1.AsnEncodingRules.DER);
+        writer.WriteBitString(Asn1Serializer.Serialize(key));
+        Assert.Equal(Convert.ToHexString(writer.Encode()), Convert.ToHexString(serialized));
+    }
+
+    [Fact]
+    public void OctetStringWithChildren_StaysPrimitive()
+    {
+        Assert.Equal(H("04 05 30 03 02 01 05"), Asn1Serializer.Serialize(new OctetString(children: [new Sequence([new Integer(5)])])));
+    }
+
+    [Fact]
+    public void ElementWithChildren_GetsTheConstructedBit()
+    {
+        // [0] given as the primitive identifier 0x80 but holding children, as in an EXPLICIT tag built by hand.
+        var tag = new ContextSpecific_0(0x80, children: [new Integer(5)]);
+
+        Assert.Equal(H("A0 03 02 01 05"), Asn1Serializer.Serialize(tag));
+        Assert.Equal(H("30 03 02 01 05"), Asn1Serializer.Serialize(new UniversalTag(0x10, children: [new Integer(5)])));
+    }
+
+    [Theory]
+    [InlineData(0x1F)]  // the low five bits 11111 announce a multi-byte tag number
+    [InlineData(0x3F)]
+    [InlineData(0x100)] // used to be truncated to 0x00, an end-of-contents marker
+    [InlineData(-1)]
+    public void TagNumberThatDoesNotFitOneByte_IsRejected(int number)
+    {
+        Assert.Throws<ArgumentException>(() => Asn1Serializer.Serialize(new Sequence([new UniversalTag(number, [0x01])])));
+    }
+
+    [Fact]
+    public void ElementWithContentAndChildren_IsRejected()
+    {
+        // The content used to be dropped without a word.
+        var tag = new UTCTime(H("31"), [new Null()]);
+
+        Assert.Throws<ArgumentException>(() => Asn1Serializer.Serialize(tag));
+    }
+
+    [Fact]
+    public void SetOf_KeepsItsOrder()
+    {
+        // Not sorted into DER order, so parsed input serializes back unchanged.
+        var parsed = Asn1Serializer.Deserialize(H("31 06 02 01 09 02 01 01"));
+
+        Assert.Equal(H("31 06 02 01 09 02 01 01"), Asn1Serializer.Serialize(parsed));
+    }
 }

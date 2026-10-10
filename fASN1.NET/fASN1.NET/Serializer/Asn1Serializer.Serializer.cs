@@ -11,8 +11,23 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Serializes the specified ASN.1 tag into a byte array.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lengths are written in DER form (definite, shortest). Children are written in the order they have; SET OF
+    /// elements are not sorted, so a tree parsed from DER serializes back to the same bytes and a tree built by
+    /// hand is DER only if its SETs are already in DER order.
+    /// </para>
+    /// <para>
+    /// The identifier is <see cref="ITag.TagNumber"/>, which must fit one identifier byte. An element with
+    /// children gets the constructed bit, except a universal BIT STRING or OCTET STRING, whose children are the
+    /// encoding they hold as their value; a BIT STRING then gets a leading unused-bits byte of 0.
+    /// </para>
+    /// </remarks>
     /// <param name="tag">The ASN.1 tag to serialize.</param>
     /// <returns>The byte array representation of the serialized ASN.1 tag.</returns>
+    /// <exception cref="ArgumentException">
+    /// An element's tag number needs more than one identifier byte, or an element has both content and children.
+    /// </exception>
     public static byte[] Serialize(ITag tag)
     {
         // The encoding is the pre-order sequence of every element's header followed, for leaves, by its content.
@@ -20,39 +35,43 @@ public static partial class Asn1Serializer
         // list, so walking it backwards sizes every child before its parent); pass 3 writes front to back.
         // No pass recurses, so the depth of the tree is limited only by memory.
         var elements = new List<ITag>();
+        var identifiers = new List<byte>();
         var parents = new List<int>();
+        var contentLengths = new List<int>();
         var pending = new Stack<(ITag Tag, int Parent)>();
         pending.Push((tag, -1));
         while (pending.Count > 0)
         {
             var (current, parent) = pending.Pop();
             var index = elements.Count;
+            var childCount = TagBase.GetChildCount(current);
+            if (childCount > 0 && current.Content.Length > 0)
+            {
+                throw new ArgumentException(
+                    $"{current.TagName} has both content and children; an element is encoded from one or the other.", nameof(tag));
+            }
+
+            var identifier = Identifier(current, childCount > 0);
             elements.Add(current);
+            identifiers.Add(identifier);
             parents.Add(parent);
-            for (int i = TagBase.GetChildCount(current) - 1; i >= 0; i--)
+            contentLengths.Add(childCount > 0 ? (identifier == BIT_STRING ? 1 : 0) : current.Content.Length);
+            for (int i = childCount - 1; i >= 0; i--)
             {
                 pending.Push((TagBase.GetChild(current, i), index));
             }
         }
 
-        var contentLengths = new int[elements.Count];
-        for (int i = elements.Count - 1; i >= 0; i--)
+        for (int i = elements.Count - 1; i > 0; i--)
         {
-            if (TagBase.GetChildCount(elements[i]) == 0)
-            {
-                contentLengths[i] = elements[i].Content.Length;
-            }
-            if (parents[i] >= 0)
-            {
-                contentLengths[parents[i]] = checked(contentLengths[parents[i]] + EncodedSize(contentLengths[i]));
-            }
+            contentLengths[parents[i]] = checked(contentLengths[parents[i]] + EncodedSize(contentLengths[i]));
         }
 
         var result = new byte[EncodedSize(contentLengths[0])];
         var position = 0;
         for (int i = 0; i < elements.Count; i++)
         {
-            result[position++] = (byte)elements[i].TagNumber;
+            result[position++] = identifiers[i];
             position += WriteLength(contentLengths[i], result, position);
             if (TagBase.GetChildCount(elements[i]) == 0)
             {
@@ -60,8 +79,34 @@ public static partial class Asn1Serializer
                 content.CopyTo(result, position);
                 position += content.Length;
             }
+            else if (identifiers[i] == BIT_STRING)
+            {
+                result[position++] = 0x00; // no unused bits: the children are whole bytes
+            }
         }
         return result;
+    }
+
+    private const byte BIT_STRING = 0x03;
+    private const byte OCTET_STRING = 0x04;
+    private const byte CONSTRUCTED_FLAG = 0x20;
+    private const int TAG_NUMBER_MASK = 0x1F;
+
+    /// <summary>The identifier byte of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
+    private static byte Identifier(ITag tag, bool hasChildren)
+    {
+        var number = tag.TagNumber;
+        // The cast used to truncate larger numbers, and a low five bits of 11111 announce a multi-byte tag number.
+        if (number is < 0 or > 0xFF || (number & TAG_NUMBER_MASK) == TAG_NUMBER_MASK)
+        {
+            throw new ArgumentException(
+                $"{tag.TagName} has the tag number {number}, which does not fit one identifier byte; multi-byte tag numbers are not supported.", nameof(tag));
+        }
+
+        var identifier = (byte)number;
+        return hasChildren && identifier is not (BIT_STRING or OCTET_STRING)
+            ? (byte)(identifier | CONSTRUCTED_FLAG)
+            : identifier;
     }
 
     private static int EncodedSize(int contentLength) => checked(1 + LengthSize(contentLength) + contentLength);
