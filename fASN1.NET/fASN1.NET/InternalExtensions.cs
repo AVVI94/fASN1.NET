@@ -15,7 +15,6 @@ internal static class InternalExtensions
 {
     public static readonly byte[] _version0Sequence = [0x00];
     public static readonly byte[] _version2Sequence = [0x02];
-    public static readonly byte[] _booleanTrueSequence = [0xFF];
     public static readonly byte[] _keyUsageOidSequence = OID.GetOrCreate(OID.KEY_USAGE).ByteValue;
     public static readonly byte[] _sanOidSequence = OID.GetOrCreate(OID.SUBJECT_ALT_NAME).ByteValue;
     public static readonly byte[] _icaUserIdSequence = OID.GetOrCreate(OID.ICA_USER_ID).ByteValue;
@@ -179,7 +178,10 @@ internal static class InternalExtensions
 
     /// <summary>Whether the extension is marked critical.</summary>
     public static bool IsCritical(ITag extension)
-        => extension.Children.Count == 3 && extension.Children[1].Content.SequenceEqual(_booleanTrueSequence);
+        => extension.Children.Count == 3 && IsTrue(extension.Children[1]);
+
+    /// <summary>Whether a BOOLEAN is TRUE: any non-zero byte in BER (X.690 §8.2.2), 0xFF in DER.</summary>
+    public static bool IsTrue(ITag boolean) => boolean.Content.Length == 1 && boolean.Content[0] != 0;
 
     /// <summary>
     /// The element encoded in the extnValue of <paramref name="extension"/>. The parser reads extnValue as that

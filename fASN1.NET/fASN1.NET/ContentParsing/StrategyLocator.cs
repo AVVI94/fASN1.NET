@@ -31,7 +31,7 @@ public class StrategyLocator
             { (int)Tag.BMPString,        BmpStringParsingStrategy.Default },
             { (int)Tag.GraphicString,    Base64ParsingStrategy.Default },
             { (int)Tag.VideotexString,   Base64ParsingStrategy.Default },
-            { (int)Tag.TeletexString,    Base64ParsingStrategy.Default },
+            { (int)Tag.TeletexString,    TeletexStringParsingStrategy.Default },
             { (int)Tag.CharacterString,  IsoStringParsingStrategy.Default }
         };
 
@@ -58,6 +58,7 @@ public class StrategyLocator
             { (int)Tag.BMPString,        BmpStringParsingStrategy.Default },
             { (int)Tag.GraphicString,    Base64ParsingStrategy.Default },
             { (int)Tag.VideotexString,   Base64ParsingStrategy.Default },
+            { (int)Tag.TeletexString,    TeletexStringParsingStrategy.Default },
             { (int)Tag.CharacterString,  IsoStringParsingStrategy.Default }
         };
 

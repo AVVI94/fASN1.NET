@@ -110,7 +110,7 @@ public static partial class Extensions
             {
                 return false;
             }
-            intercon = new ICACertIntercon(value.Children[2].Content.SequenceEqual(_booleanTrueSequence),
+            intercon = new ICACertIntercon(IsTrue(value.Children[2]),
                                            value.Children[0].ContentToString(),
                                            count);
             return true;
