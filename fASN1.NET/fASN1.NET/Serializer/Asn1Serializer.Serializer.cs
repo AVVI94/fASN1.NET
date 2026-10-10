@@ -41,17 +41,18 @@ public static partial class Asn1Serializer
 
     static byte[] EncodeLength(int length)
     {
-        if (length < 128)
+        if (length < 0x80)
             return [(byte)length];
-        var r = BitConverter.GetBytes(length);
-        int l = 0;
-#pragma warning disable IDE2001 // Embedded statements must be on their own line
-        while (r[++l] != 0) ;
-#pragma warning restore IDE2001 // Embedded statements must be on their own line
-        var res = new byte[l + 1];
-        res[l] = (byte)(l + 128);
-        Array.Copy(r, res, l);
-        Array.Reverse(res);
+
+        // Long form: 0x80 | number of length octets, then the length big-endian with no leading zeros.
+        var octets = length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
+        var res = new byte[octets + 1];
+        res[0] = (byte)(0x80 | octets);
+        for (int i = octets; i > 0; i--)
+        {
+            res[i] = (byte)length;
+            length >>= 8;
+        }
         return res;
     }
     #endregion

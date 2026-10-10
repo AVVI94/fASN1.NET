@@ -64,8 +64,7 @@ public class CorpusStructureTests
         {
             var ok = Asn1Serializer.TryDeserialize(data.AsSpan(0, length).ToArray(), out var tag, out var error);
             Assert.False(ok, $"prefix of {length}/{data.Length} bytes parsed as {tag?.TagName}");
-            // error can be null for prefixes cut inside the length octets; see KnownQuirkTests.
-            Assert.True(error is not null || length <= 4, $"prefix of {length} bytes failed without an error message");
+            Assert.False(string.IsNullOrEmpty(error), $"prefix of {length} bytes failed without an error message");
         }
     }
 

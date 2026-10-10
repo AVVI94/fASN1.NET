@@ -240,11 +240,7 @@ internal static class TestCorpus
                     }
                 }
             }
-            if (w.RuleSet == AsnEncodingRules.DER)
-            {
-                // An empty indefinite SEQUENCE hits a known quirk (see KnownQuirkTests), so only DER gets one.
-                using (w.PushSequence()) { }
-            }
+            using (w.PushSequence()) { }
         }
         return w.Encode();
     }
