@@ -173,7 +173,133 @@ public static partial class Asn1Serializer
         return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
     }
 
+    /// <summary>
+    /// A definite-length constructed element whose children are being read.
+    /// </summary>
+    private sealed class ContainerFrame(ITag tag, long start, long end)
+    {
+        public ITag Tag { get; } = tag;
+
+        /// <summary>Stream offset of the first content byte.</summary>
+        public long Start { get; } = start;
+
+        /// <summary>Stream offset just past the last content byte.</summary>
+        public long End { get; } = end;
+    }
+
+    /// <summary>
+    /// Parses one element and all of its descendants. Definite-length containers are tracked on an
+    /// explicit stack instead of the call stack, so nesting depth does not consume call stack space.
+    /// </summary>
     private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
+    {
+        var frames = new Stack<ContainerFrame>();
+        var needElement = true;
+        ITag? completed = null;
+        while (true)
+        {
+            if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
+            {
+                // A container was opened; continue below with its first child.
+            }
+            else
+            {
+                // `completed` is a finished element, or null when it failed. Hand it to its parent.
+                if (frames.Count == 0)
+                {
+                    return completed;
+                }
+                var parent = frames.Peek();
+                if (completed is null)
+                {
+                    // A failed child fails the container, which rewinds to its first content byte.
+                    stream.Position = parent.Start;
+                    frames.Pop();
+                    needElement = false;
+                    continue;
+                }
+                parent.Tag.Children.Add(completed);
+            }
+
+            var top = frames.Peek();
+            if (stream.Position < top.End)
+            {
+                needElement = true;
+                continue;
+            }
+
+            frames.Pop();
+            needElement = false;
+            if (stream.Position != top.End)
+            {
+                error = $"Content size is not correct for container at offset {top.Start}";
+                completed = null;
+                continue;
+            }
+            completed = FinishElement(stream, ref error, top.Tag, top.Start, top.End - top.Start);
+        }
+    }
+
+    /// <summary>
+    /// Reads the identifier and length of the next element. A definite-length container is pushed onto
+    /// <paramref name="frames"/> and <see langword="true"/> is returned; any other element is parsed
+    /// completely and returned through <paramref name="completed"/>.
+    /// </summary>
+    private static bool BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, Stack<ContainerFrame> frames, out ITag? completed)
+    {
+        completed = null;
+        var tagNumber = stream.ReadByte();
+        if (tagNumber == -1)
+        {
+            return false;
+        }
+        var tag = tagFactory.Create(tagNumber);
+        long? length = DecodeLength(stream, out var valid);
+        if (!valid)
+        {
+            return false;
+        }
+        var start = stream.Position;
+        if (length is not null && (tag.IsConstructed || (tagNumber & 0x20) != 0))
+        {
+            var end = start + length.Value;
+            if (end > stream.Length)
+            {
+                error = $"Container at offset {start} has a length of {length}, which is past the end of the stream";
+                return false;
+            }
+            frames.Push(new ContainerFrame(tag, start, end));
+            return true;
+        }
+        completed = ParseBodyRecursive(stream, ref error, tagFactory, tag, tagNumber, length, start);
+        return false;
+    }
+
+    /// <summary>
+    /// Shared tail of every element: a node without children takes its content bytes from the stream.
+    /// </summary>
+    private static ITag? FinishElement(Stream stream, ref string? error, ITag tag, long start, long? length)
+    {
+        if (tag.Children.Count == 0)
+        {
+            if (length is null)
+            {
+                error = "Cannot skip over an invalid tag with indefinite length";
+                return null;
+            }
+            if (length.Value > stream.Length - stream.Position)
+            {
+                error = $"Content size is not correct for tag {tag.TagName} at offset {start}";
+                return null;
+            }
+            var content = new byte[length.Value];
+            _ = stream.Read(content, 0, (int)length.Value);
+            tag.Content = content;
+        }
+        return tag;
+    }
+
+    private static ITag? DeserializeRecursive(Stream stream, ref string? error, ITagFactory tagFactory)
     {
         var tagNumber = stream.ReadByte();
         if (tagNumber == -1)
@@ -182,12 +308,15 @@ public static partial class Asn1Serializer
         }
         var tag = tagFactory.Create(tagNumber);
         long? length = DecodeLength(stream, out var valid);
-        //Debug.Assert(length is null && !valid || length is not null && length.Value >= 0);
         if (!valid)
         {
             return null;
         }
-        var start = stream.Position;
+        return ParseBodyRecursive(stream, ref error, tagFactory, tag, tagNumber, length, stream.Position);
+    }
+
+    private static ITag? ParseBodyRecursive(Stream stream, ref string? error, ITagFactory tagFactory, ITag tag, int tagNumber, long? length, long start)
+    {
         var tagMaxOffsetInStream = start + length;
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
         {
@@ -232,26 +361,7 @@ public static partial class Asn1Serializer
             }
         }
 
-        if (tag.Children.Count == 0)
-        {
-            if (length is null)
-            {
-                error = "Cannot skip over an invalid tag with indefinite length";
-                return null;
-                //throw new InvalidDataException($"Cannot skip over an invalid tag with indefinite length at offset {start}");
-            }
-            //var position = stream.Position;
-            if (length.Value > stream.Length - stream.Position)
-            {
-                error = $"Content size is not correct for tag {tag.TagName} at offset {start}";
-                return null;
-                //throw new InvalidDataException($"Content size is not correct for tag {tag.TagName} at offset {start}");
-            }
-            var content = new byte[length.Value];
-            _ = stream.Read(content, 0, (int)length.Value);
-            tag.Content = content;
-        }
-        return tag;
+        return FinishElement(stream, ref error, tag, start, length);
     }
 
     static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ref string? error, ITagFactory tagFactory, long? parentContainerEnd)
@@ -269,7 +379,7 @@ public static partial class Asn1Serializer
             }
             while (stream.Position < end)
             {
-                var child = DeserializeInternal(stream, ref error, tagFactory);
+                var child = DeserializeRecursive(stream, ref error, tagFactory);
                 if (child is null)
                 {
                     stream.Position = start;
@@ -292,7 +402,7 @@ public static partial class Asn1Serializer
 
             while (true)
             {
-                var tag = DeserializeInternal(stream, ref error, tagFactory);
+                var tag = DeserializeRecursive(stream, ref error, tagFactory);
                 if (tag is null or { IsEoc: true })
                 {
                     break;
