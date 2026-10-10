@@ -77,7 +77,9 @@ public class ValueEncodingTests
 
         var text = UtcTimeParsingStrategy.Default.Parse(new UTCTime(time).Content);
 
-        Assert.Equal(time, DateTime.Parse(text));
+        var parsed = DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        Assert.Equal(time, parsed);
+        Assert.Equal(DateTimeKind.Utc, parsed.Kind);
     }
 
     [Fact]
@@ -109,7 +111,7 @@ public class ValueEncodingTests
     {
         var text = UtcTimeParsingStrategy.Default.Parse(System.Text.Encoding.ASCII.GetBytes(content));
 
-        Assert.Equal(expectedYear, DateTime.Parse(text).Year);
+        Assert.Equal(expectedYear, DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).Year);
     }
 
     private static byte[] DerIntegerContent(BigInteger value)

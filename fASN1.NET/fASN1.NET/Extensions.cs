@@ -278,7 +278,7 @@ public static partial class Extensions
     /// Attempts to get the notAfter date from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="notAfter">The notAfter date of the certificate.</param>
+    /// <param name="notAfter">The notAfter date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>).</param>
     /// <returns><see langword="true"/> if the notAfter date was found; otherwise, <see langword="false"/>.</returns>
     public static bool TryGetCertificateNotAfter(this ITag tag, out DateTime notAfter)
     {
@@ -287,7 +287,9 @@ public static partial class Extensions
         {
             if (!IsV3Certificate(tag))
                 return false;
-            notAfter = DateTime.Parse(TbsFields(tag)[4].Children[1].ContentToString());
+            // Validity ::= SEQUENCE { notBefore Time, notAfter Time }, Time ::= CHOICE { UTCTime, GeneralizedTime }
+            if (!Asn1Time.TryParse(TbsFields(tag)[4].Children[1], out notAfter))
+                return false;
             return true;
         }
         catch
@@ -301,7 +303,7 @@ public static partial class Extensions
     /// Attempts to get the notBefore date from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="notBefore">The notBefore date of the certificate.</param>
+    /// <param name="notBefore">The notBefore date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>).</param>
     /// <returns><see langword="true"/> if the notBefore date was found; otherwise, <see langword="false"/>.</returns>
     public static bool TryGetCertificateNotBefore(this ITag tag, out DateTime notBefore)
     {
@@ -310,7 +312,8 @@ public static partial class Extensions
         {
             if (!IsV3Certificate(tag))
                 return false;
-            notBefore = DateTime.Parse(TbsFields(tag)[4].Children[0].ContentToString());
+            if (!Asn1Time.TryParse(TbsFields(tag)[4].Children[0], out notBefore))
+                return false;
             return true;
         }
         catch

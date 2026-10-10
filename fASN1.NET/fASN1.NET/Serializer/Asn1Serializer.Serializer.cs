@@ -170,25 +170,35 @@ public static partial class Asn1Serializer
 
         if (tag.TagNumber == (int)Tag.ObjectIdentifier)
         {
-            lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
+            try
+            {
+                lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
+            }
+            catch (Exception)
+            {
+                lastObjectIdentifier = ""; // malformed, so it names nothing
+            }
         }
     }
 
     private static string GetContentString(ITag tag, Asn1StringSerializerOptions options, string lastObjectIdentifier, StrategyLocator strategyLocator)
     {
-        string content;
-        if (options.ConvertKeyUsageBitStringToString
-                    && tag.TagNumber == (int)Tag.BitString
-                    && lastObjectIdentifier == Oid.OID.KEY_USAGE)
+        // The text is for people to read, and the input may be malformed or a custom strategy may fail; a dump of
+        // the whole tree must not fail because of one value, so such a value is shown as hexadecimal.
+        try
         {
-            content = KeyUsage.FromBitStringContent(tag.Content, critical: false).ToString();
+            if (options.ConvertKeyUsageBitStringToString
+                        && tag.TagNumber == (int)Tag.BitString
+                        && lastObjectIdentifier == Oid.OID.KEY_USAGE)
+            {
+                return KeyUsage.FromBitStringContent(tag.Content, critical: false).ToString();
+            }
+            return tag.ContentToString(strategyLocator);
         }
-        else
+        catch (Exception)
         {
-            content = tag.ContentToString(strategyLocator);
+            return OctetStringParsingStrategy.ToHex(tag.Content);
         }
-
-        return content;
     }
 
     private static string ProcessContentString(string content, Asn1StringSerializerOptions options, string wrappedContentIndentation)

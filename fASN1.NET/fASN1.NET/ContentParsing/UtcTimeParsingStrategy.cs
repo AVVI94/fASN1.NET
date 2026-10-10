@@ -5,23 +5,18 @@ using fASN1.NET.Tags;
 namespace fASN1.NET.ContentParsing;
 
 /// <summary>
-/// Shows UTCTime content as a UTC <see cref="DateTime"/> formatted for the current culture. Following RFC 5280,
-/// two-digit years 50–99 are taken as 19xx and 00–49 as 20xx.
+/// Shows UTCTime content as ISO 8601 text in UTC that does not depend on the current culture, such as
+/// <c>2025-01-02T03:04:05Z</c>; a time with an offset is converted to UTC. Following RFC 5280, two-digit years
+/// 50–99 are taken as 19xx and 00–49 as 20xx. Content that is not a valid UTCTime is shown as
+/// <see cref="OctetStringParsingStrategy"/> would show it.
 /// </summary>
 public class UtcTimeParsingStrategy : IContentParsingStrategy
 {
     /// <inheritdoc/>
     public string Parse(byte[] content)
-    {
-        var str = Encoding.ASCII.GetString(content);
-        var year = UTCTime.ExpandYear(int.Parse(str.Substring(0, 2)));
-        var month = int.Parse(str.Substring(2, 2));
-        var day = int.Parse(str.Substring(4, 2));
-        var hour = int.Parse(str.Substring(6, 2));
-        var minute = int.Parse(str.Substring(8, 2));
-        var second = int.Parse(str.Substring(10, 2));
-        return new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc).ToString();
-    }
+        => Asn1Time.TryParseUtcTime(content, out var value)
+            ? Asn1Time.ToDisplayString(value)
+            : OctetStringParsingStrategy.Default.Parse(content);
 
     /// <summary>
     /// Formats a date as UTCTime text, <c>YYMMDDHHMMSSZ</c> in UTC, as the <see cref="UTCTime(DateTime)"/>

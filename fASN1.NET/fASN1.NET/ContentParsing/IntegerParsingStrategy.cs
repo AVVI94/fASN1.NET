@@ -11,7 +11,10 @@ public class IntegerParsingStrategy : IContentParsingStrategy
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
-        return BigInteger.Parse(BitConverter.ToString(content).Replace("-", ""), System.Globalization.NumberStyles.HexNumber).ToString();
+        if (content.Length == 0)
+            return ""; // invalid: an INTEGER has at least one byte
+        return BigInteger.Parse(BitConverter.ToString(content).Replace("-", ""), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture)
+                         .ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>A shared instance; the strategy keeps no state.</summary>

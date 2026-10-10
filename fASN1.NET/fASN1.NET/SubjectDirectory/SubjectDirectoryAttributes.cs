@@ -116,7 +116,7 @@ public class SubjectDirectoryAttributes
         _ = strategyLocator ?? StrategyLocator.Default;
 
         string? gender = null;
-        string? dateOfBirth = null;
+        DateTime? dateOfBirthDate = null;
         string? placeOfBirth = null;
         List<string> countryOfResidence = [];
         List<string> countryOfCitizenship = [];
@@ -143,7 +143,9 @@ public class SubjectDirectoryAttributes
             }
             else if (oid.SequenceEqual(InternalExtensions._dateOfBirthOidSequence))
             {
-                dateOfBirth = value;
+                // RFC 3739: GeneralizedTime, YYYYMMDD000000Z
+                if (ContentParsing.Asn1Time.TryParse(values[0], out var birth))
+                    dateOfBirthDate = DateTime.SpecifyKind(birth.Date, DateTimeKind.Unspecified);
             }
             else if (oid.SequenceEqual(InternalExtensions._placeOfBirthOidSequence))
             {
@@ -158,12 +160,6 @@ public class SubjectDirectoryAttributes
             {
                 countryOfCitizenship.AddRange(values.Children.Select(v => v.ContentToString()));
             }
-        }
-
-        DateTime? dateOfBirthDate = null;
-        if (DateTime.TryParse(dateOfBirth, out var v))
-        {
-            dateOfBirthDate = v.Date;
         }
 
         var attrs = new SubjectDirectoryAttributes(

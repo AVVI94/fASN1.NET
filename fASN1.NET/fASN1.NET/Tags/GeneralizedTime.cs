@@ -16,20 +16,16 @@ public class GeneralizedTime : TagBase
     public GeneralizedTime(byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
     }
-    /// <summary>Creates the tag holding <paramref name="time"/>.</summary>
-    /// <param name="time">The date and time.</param>
-    public GeneralizedTime(DateTime time) : base(Encode(time))
+    /// <summary>
+    /// Creates the tag holding <paramref name="time"/> in the DER form RFC 5280 requires: UTC,
+    /// <c>YYYYMMDDHHMMSS[.f…]Z</c>, with a fraction of a second only when there is one and without trailing zeros.
+    /// </summary>
+    /// <param name="time">
+    /// The date and time. A local time is converted to UTC; a time of unspecified kind is treated as local,
+    /// as <see cref="DateTime.ToUniversalTime"/> does.
+    /// </param>
+    public GeneralizedTime(DateTime time) : base(Encoding.ASCII.GetBytes(ContentParsing.Asn1Time.FormatGeneralizedTime(time)))
     {
-    }
-
-    private static byte[] Encode(DateTime time)
-    {
-        var val = time.ToString("yyyyMMddHHmmss.f");
-        if (time.Kind == DateTimeKind.Utc)
-        {
-            val += "Z";
-        }
-        return Encoding.ASCII.GetBytes(val);
     }
 
     /// <inheritdoc/>
