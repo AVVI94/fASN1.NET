@@ -29,6 +29,7 @@ public class SubjectDirectoryAttributesTests
     private static void CommonAsserts(bool res, SubjectDirectoryAttributes? sda)
     {
         Assert.True(res);
+        Assert.NotNull(sda);
         Assert.Equal("DE", Assert.Single(sda.CountryOfCitizenship));
         Assert.Equal("F", sda.GenderString);
         Assert.Equal(SubjectDirectory.Gender.Female, sda.Gender);

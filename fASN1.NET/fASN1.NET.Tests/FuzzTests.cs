@@ -33,8 +33,8 @@ public class FuzzTests
     {
         var rng = new Random(seed * 7919);
         int oracleAccepted = 0;
-        const int count = 1500;
-        for (int i = 0; i < count; i++)
+        const int COUNT = 1500;
+        for (int i = 0; i < COUNT; i++)
         {
             var data = BerGenerator.Document(rng);
             if (CheckAgainstOracle(data))
@@ -43,7 +43,7 @@ public class FuzzTests
                 CheckAgainstOracle(Mutate(data, rng));
         }
         // Keeps the oracle comparison from silently becoming vacuous if the generator drifts.
-        Assert.True(oracleAccepted > count / 2, $"only {oracleAccepted} of {count} generated documents were valid BER");
+        Assert.True(oracleAccepted > COUNT / 2, $"only {oracleAccepted} of {COUNT} generated documents were valid BER");
     }
 
     /// <summary>
@@ -130,8 +130,8 @@ public class FuzzTests
 /// </summary>
 internal static class BerGenerator
 {
-    private static readonly byte[] PrimitiveTags = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x0C, 0x13, 0x16, 0x17, 0x18, 0x1E, 0x80, 0x81, 0x85, 0x41, 0xC3, 0x0D, 0x00];
-    private static readonly byte[] ConstructedTags = [0x30, 0x31, 0xA0, 0xA1, 0xA3, 0xA7, 0x61, 0xE2, 0x24, 0x2C];
+    private static readonly byte[] _primitiveTags = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x0C, 0x13, 0x16, 0x17, 0x18, 0x1E, 0x80, 0x81, 0x85, 0x41, 0xC3, 0x0D, 0x00];
+    private static readonly byte[] _constructedTags = [0x30, 0x31, 0xA0, 0xA1, 0xA3, 0xA7, 0x61, 0xE2, 0x24, 0x2C];
 
     public static byte[] Document(Random rng) => Node(rng, depth: 0);
 
@@ -147,7 +147,7 @@ internal static class BerGenerator
 
     private static byte[] Primitive(Random rng, int depth)
     {
-        var tag = PrimitiveTags[rng.Next(PrimitiveTags.Length)];
+        var tag = _primitiveTags[rng.Next(_primitiveTags.Length)];
         var content = new byte[rng.Next(rng.Next(10) == 0 ? 300 : 6)];
         rng.NextBytes(content);
         if (tag == 0x03 && content.Length > 0 && rng.Next(2) == 0)
@@ -169,7 +169,7 @@ internal static class BerGenerator
 
     private static byte[] Constructed(Random rng, int depth)
     {
-        var tag = ConstructedTags[rng.Next(ConstructedTags.Length)];
+        var tag = _constructedTags[rng.Next(_constructedTags.Length)];
         var body = new List<byte>();
         int count = rng.Next(5);
         for (int i = 0; i < count; i++)

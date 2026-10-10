@@ -14,10 +14,10 @@ namespace fASN1.NET.Parsing;
 /// </remarks>
 internal readonly struct TagTraitsTable
 {
-    private const int IdentifierCount = 256;
+    private const int IDENTIFIER_COUNT = 256;
 
     /// <summary>Built once and never modified afterwards, so it is safe to share between threads.</summary>
-    private static readonly TagTraits[] DefaultFactoryTraits = BuildDefaultFactoryTraits();
+    private static readonly TagTraits[] _defaultFactoryTraits = BuildDefaultFactoryTraits();
 
     private readonly TagTraits[] _traits;
     private readonly ITagFactory _factory;
@@ -33,8 +33,8 @@ internal readonly struct TagTraitsTable
     /// <summary>Gets the table for <paramref name="factory"/>. Call <see cref="Dispose"/> when the parse ends.</summary>
     public static TagTraitsTable ForFactory(ITagFactory factory)
         => ReferenceEquals(factory, DefaultTagFactory.Instance)
-            ? new TagTraitsTable(DefaultFactoryTraits, factory, isRented: false)
-            : new TagTraitsTable(ArrayPool<TagTraits>.Shared.Rent(IdentifierCount), factory, isRented: true);
+            ? new TagTraitsTable(_defaultFactoryTraits, factory, isRented: false)
+            : new TagTraitsTable(ArrayPool<TagTraits>.Shared.Rent(IDENTIFIER_COUNT), factory, isRented: true);
 
     public TagTraits this[int identifier]
     {
@@ -55,7 +55,7 @@ internal readonly struct TagTraitsTable
 
     private static TagTraits[] BuildDefaultFactoryTraits()
     {
-        var traits = new TagTraits[IdentifierCount];
+        var traits = new TagTraits[IDENTIFIER_COUNT];
         for (int identifier = 0; identifier < traits.Length; identifier++)
             traits[identifier] = TagTraits.Of(DefaultTagFactory.Instance.Create(identifier), identifier);
         return traits;

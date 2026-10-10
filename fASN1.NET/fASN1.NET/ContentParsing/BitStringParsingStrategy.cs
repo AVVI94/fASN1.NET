@@ -2,6 +2,10 @@
 using System.Text;
 
 namespace fASN1.NET.ContentParsing;
+
+/// <summary>
+/// Shows BIT STRING content as a string of <c>0</c> and <c>1</c> characters, without the unused bits.
+/// </summary>
 public class BitStringParsingStrategy : IContentParsingStrategy
 {
     internal static string ParseBitString(byte[] data)
@@ -26,10 +30,14 @@ public class BitStringParsingStrategy : IContentParsingStrategy
         return sb.ToString();
     }
 
+    /// <inheritdoc/>
+
     public string Parse(byte[] content)
     {
         return ParseBitString(content);
     }
+
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
 
     public static BitStringParsingStrategy Default { get; } = new BitStringParsingStrategy();
 }

@@ -22,7 +22,7 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
         ParseFailureKind.ContentPastEndOfData => $"Content size is not correct for tag {tagName} at offset {offset}",
         ParseFailureKind.ContentReadIncomplete => $"Unexpected end of data in the content of tag {tagName} at offset {offset}",
         ParseFailureKind.LengthTruncated => $"Unexpected end of data in the length of the element at offset {offset}",
-        ParseFailureKind.TooManyLengthOctets => $"Length of the element at offset {offset} uses {value} octets; at most {Ber.MaxLengthOctets} are supported",
+        ParseFailureKind.TooManyLengthOctets => $"Length of the element at offset {offset} uses {value} octets; at most {Ber.MAX_LENGTH_OCTETS} are supported",
         ParseFailureKind.LengthTooLarge => $"Length of the element at offset {offset} is too large",
         _ => "Unknown deserialization error",
     };

@@ -20,7 +20,6 @@ public enum SanItemKind
 /// <summary>
 /// SubjectAlternativeName item
 /// </summary>
-/// <typeparam name="T">Item's content type</typeparam>
 public interface ISanItem
 {
     /// <summary>

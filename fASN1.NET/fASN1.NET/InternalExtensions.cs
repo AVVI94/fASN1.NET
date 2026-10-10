@@ -187,7 +187,7 @@ internal static class InternalExtensions
     /// </code>
     /// </remarks>
     /// <param name="tag">Parent tag</param>
-    /// <param name="oid">Requested OID in byte array representation. <see cref="ASN1Decoder.NET.OidEncoder.OidEncoder"/> can be used to convert it from a string representation.</param>
+    /// <param name="oid">Requested OID in byte array representation. <see cref="OidEncoder"/> can be used to convert it from a string representation.</param>
     /// <param name="items">The value</param>
     /// <returns><see langword="true" /> if any value was found, otherwise <see langword="false" /></returns>
     public static bool TryGetSubjectItem(this ITag tag, byte[] oid, out List<string> items)

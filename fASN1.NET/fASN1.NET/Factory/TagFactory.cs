@@ -2,6 +2,11 @@
 
 namespace fASN1.NET.Factory;
 
+/// <summary>
+/// Creates the <see cref="ITag"/> for an identifier byte. Pass a custom factory to the deserializer to use your own
+/// tag classes. The parser assumes that a tag created for a given identifier always has the same
+/// <see cref="ITag.IsConstructed"/>, <see cref="ITag.IsUniversal"/> and <see cref="ITag.TagNumber"/>.
+/// </summary>
 public interface ITagFactory
 {
     /// <summary>
@@ -13,6 +18,9 @@ public interface ITagFactory
     ITag Create(int tag, byte[]? content = null);
 }
 
+/// <summary>
+/// Creates the built-in tag class for each identifier byte, and <see cref="Unknown"/> for universal tags it has no class for.
+/// </summary>
 public sealed class DefaultTagFactory : ITagFactory
 {
     /// <summary>The factory is stateless, so one instance serves every call that does not pass its own.</summary>

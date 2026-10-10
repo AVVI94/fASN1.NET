@@ -24,8 +24,8 @@ namespace fASN1.NET.Parsing;
 internal ref struct StructureScanner<TSource>
     where TSource : struct, IByteSource
 {
-    private const int InitialOpenElementCapacity = 16;
-    private const int InitialNodeCapacity = 128;
+    private const int INITIAL_OPEN_ELEMENT_CAPACITY = 16;
+    private const int INITIAL_NODE_CAPACITY = 128;
 
     private TSource _source;
     private readonly TagTraitsTable _traits;
@@ -39,8 +39,8 @@ internal ref struct StructureScanner<TSource>
     {
         _source = source;
         _traits = traits;
-        _openElements = new PooledList<OpenElement>(InitialOpenElementCapacity, clearOnRemove: false);
-        _nodes = new PooledList<ScannedNode>(InitialNodeCapacity, clearOnRemove: false);
+        _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
+        _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
         _failure = default;
     }
 
@@ -110,7 +110,7 @@ internal ref struct StructureScanner<TSource>
                 ? new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart)
                 : new ParseFailure(ParseFailureKind.UnexpectedEndOfData, elementStart));
         }
-        if ((identifier & Ber.TagNumberMask) == Ber.TagNumberMask)
+        if ((identifier & Ber.TAG_NUMBER_MASK) == Ber.TAG_NUMBER_MASK)
         {
             // The tag number continues in the following bytes; reading them as the length would misplace every later element.
             return Fail(new ParseFailure(ParseFailureKind.MultiByteTagNumber, elementStart));
@@ -118,7 +118,7 @@ internal ref struct StructureScanner<TSource>
         if (!TryReadLength(elementStart, out var contentLength))
             return ElementScanResult.Failed;
 
-        if (identifier == Ber.EndOfContents)
+        if (identifier == Ber.END_OF_CONTENTS)
         {
             if (isInsideIndefiniteLength)
             {
@@ -232,16 +232,16 @@ internal ref struct StructureScanner<TSource>
         if (first == -1)
             return FailLength(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
 
-        if ((first & Ber.LongFormLengthFlag) == 0)
+        if ((first & Ber.LONG_FORM_LENGTH_FLAG) == 0)
         {
             contentLength = first; // short form: the byte is the length
             return true;
         }
 
-        var octetCount = first & Ber.LengthOctetCountMask;
+        var octetCount = first & Ber.LENGTH_OCTET_COUNT_MASK;
         if (octetCount == 0)
             return true; // indefinite length
-        if (octetCount > Ber.MaxLengthOctets)
+        if (octetCount > Ber.MAX_LENGTH_OCTETS)
             return FailLength(new ParseFailure(ParseFailureKind.TooManyLengthOctets, elementStart, octetCount));
 
         long length = 0;

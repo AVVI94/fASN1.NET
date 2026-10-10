@@ -99,7 +99,7 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
 /// </summary>
 internal static class TagIdentity
 {
-    private static readonly Dictionary<int, (Type Type, string Name, int TagNumber)> Universal = new()
+    private static readonly Dictionary<int, (Type Type, string Name, int TagNumber)> _universal = new()
     {
         [0x00] = (typeof(Eoc), "Eoc", 0),
         [0x01] = (typeof(BooleanTag), "Boolean", 1),
@@ -130,11 +130,11 @@ internal static class TagIdentity
         [0x2B] = (typeof(EmbeddedPdv), "EmbeddedPDV", 43),
     };
 
-    public static IEnumerable<int> KnownUniversalIdentifiers => Universal.Keys;
+    public static IEnumerable<int> KnownUniversalIdentifiers => _universal.Keys;
 
     public static Type ExpectedType(int id) => (id >> 6) switch
     {
-        0 => Universal.TryGetValue(id, out var u) ? u.Type : typeof(Unknown),
+        0 => _universal.TryGetValue(id, out var u) ? u.Type : typeof(Unknown),
         1 => typeof(Application),
         2 => (id & 0x1F) switch
         {
@@ -149,7 +149,7 @@ internal static class TagIdentity
 
     public static string ExpectedName(int id) => (id >> 6) switch
     {
-        0 => Universal.TryGetValue(id, out var u) ? u.Name : $"Unknown_{id & 0x1F}",
+        0 => _universal.TryGetValue(id, out var u) ? u.Name : $"Unknown_{id & 0x1F}",
         1 => $"Application_{id & 0x1F}",
         2 => $"[{id & 0x1F}]",
         _ => $"Private_{id & 0x1F}",
@@ -158,5 +158,5 @@ internal static class TagIdentity
     /// <summary>
     /// Known universal classes report their fixed number; every other class reports the identifier byte.
     /// </summary>
-    public static int ExpectedTagNumber(int id) => (id >> 6) == 0 && Universal.TryGetValue(id, out var u) ? u.TagNumber : id;
+    public static int ExpectedTagNumber(int id) => (id >> 6) == 0 && _universal.TryGetValue(id, out var u) ? u.TagNumber : id;
 }

@@ -26,7 +26,7 @@ internal readonly struct TagTraits(bool isConstructed, bool isEncapsulationCandi
     /// <summary>Derives the traits from a tag freshly created for <paramref name="identifier"/>.</summary>
     public static TagTraits Of(ITag freshTag, int identifier)
     {
-        var isConstructed = freshTag.IsConstructed || (identifier & Ber.ConstructedFlag) != 0;
+        var isConstructed = freshTag.IsConstructed || (identifier & Ber.CONSTRUCTED_FLAG) != 0;
         // A BIT STRING is never a candidate: signatures and keys would otherwise be expanded by accident.
         var isEncapsulationCandidate = !isConstructed
                                        && freshTag.IsUniversal

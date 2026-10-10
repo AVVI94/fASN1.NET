@@ -11,51 +11,51 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class DeepNestingTests
 {
-    private const int Depth = 200_000;
+    private const int DEPTH = 200_000;
 
     [Fact]
     public void DeepIndefiniteNesting_ParsesEveryLevel()
     {
         // 30 80 × depth, INTEGER 5, 00 00 × depth
-        var data = new byte[(Depth * 4) + 3];
-        for (int i = 0; i < Depth; i++)
+        var data = new byte[(DEPTH * 4) + 3];
+        for (int i = 0; i < DEPTH; i++)
         {
             data[i * 2] = 0x30;
             data[(i * 2) + 1] = 0x80;
         }
-        data[Depth * 2] = 0x02;
-        data[(Depth * 2) + 1] = 0x01;
-        data[(Depth * 2) + 2] = 0x05;
+        data[DEPTH * 2] = 0x02;
+        data[(DEPTH * 2) + 1] = 0x01;
+        data[(DEPTH * 2) + 2] = 0x05;
 
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
 
-        AssertChain<Sequence>(tag, Depth);
+        AssertChain<Sequence>(tag, DEPTH);
     }
 
     [Fact]
     public void DeepDefiniteNesting_ParsesEveryLevel()
     {
-        var data = BuildDefinite(Depth, 0x30, [0x02, 0x01, 0x05]);
+        var data = BuildDefinite(DEPTH, 0x30, [0x02, 0x01, 0x05]);
 
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
 
-        AssertChain<Sequence>(tag, Depth);
+        AssertChain<Sequence>(tag, DEPTH);
     }
 
     [Fact]
     public void DeepEncapsulatedOctetStrings_ParseEveryLevel()
     {
-        var data = BuildDefinite(Depth, 0x04, [0x02, 0x01, 0x05]);
+        var data = BuildDefinite(DEPTH, 0x04, [0x02, 0x01, 0x05]);
 
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
 
-        AssertChain<OctetString>(tag, Depth);
+        AssertChain<OctetString>(tag, DEPTH);
     }
 
     [Fact]
     public void DeepNesting_FailureAtTheBottom_FailsWithoutCrashing()
     {
-        var data = BuildDefinite(Depth, 0x30, [0x02, 0x01, 0x05]);
+        var data = BuildDefinite(DEPTH, 0x30, [0x02, 0x01, 0x05]);
         // Innermost element becomes 05 02 05: a NULL claiming 2 content bytes with only 1 left.
         data[^3] = 0x05;
         data[^2] = 0x02;
@@ -68,11 +68,11 @@ public class DeepNestingTests
     public void DeepNesting_ProbeFailureAtTheBottom_RollsBackOnlyTheInnermostProbe()
     {
         // Innermost OCTET STRING holds "hello", which is not DER; every outer level still encapsulates.
-        var data = BuildDefinite(Depth, 0x04, [0x04, 0x05, 0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+        var data = BuildDefinite(DEPTH, 0x04, [0x04, 0x05, 0x68, 0x65, 0x6C, 0x6C, 0x6F]);
 
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
 
-        var leaf = AssertChain<OctetString>(tag, Depth);
+        var leaf = AssertChain<OctetString>(tag, DEPTH);
         Assert.IsType<OctetString>(leaf);
         Assert.Equal("68656C6C6F", Convert.ToHexString(leaf.Content));
     }

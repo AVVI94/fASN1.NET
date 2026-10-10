@@ -15,14 +15,14 @@ namespace fASN1.NET.Parsing;
 /// </remarks>
 internal static class TreeBuilder
 {
-    private const int InitialParentCapacity = 16;
+    private const int INITIAL_PARENT_CAPACITY = 16;
 
     /// <summary>Builds the tree; <paramref name="failure"/> is only written when this fails.</summary>
     public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
         root = null;
-        var parents = new PooledList<PendingParent>(InitialParentCapacity, clearOnRemove: true);
+        var parents = new PooledList<PendingParent>(INITIAL_PARENT_CAPACITY, clearOnRemove: true);
         try
         {
             foreach (ref readonly var node in nodes)

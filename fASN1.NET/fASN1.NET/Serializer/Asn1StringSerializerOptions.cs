@@ -1,10 +1,17 @@
 ﻿using fASN1.NET.ContentParsing;
 
 namespace fASN1.NET;
+/// <summary>
+/// What <see cref="Asn1Serializer.TagToString(Tags.ITag, Asn1StringSerializerOptions)"/> does with content longer than
+/// <see cref="Asn1StringSerializerOptions.MaximumContentLineLength"/>.
+/// </summary>
 public enum ContentLengthHandling
 {
+    /// <summary>Cut the content off and append <see cref="Asn1StringSerializerOptions.TruncateString"/>.</summary>
     Truncate,
+    /// <summary>Break the content into lines of the maximum length.</summary>
     Wrap,
+    /// <summary>Break the content into lines at spaces, keeping each line within the maximum length where possible.</summary>
     WordWrap
 }
 

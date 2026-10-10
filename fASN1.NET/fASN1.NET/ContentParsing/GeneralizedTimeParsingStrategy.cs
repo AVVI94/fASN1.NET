@@ -3,8 +3,12 @@ using System.Text;
 
 namespace fASN1.NET.ContentParsing;
 
+/// <summary>
+/// Shows GeneralizedTime content as a <see cref="System.DateTime"/> formatted for the current culture. Fractions of a second and time zone offsets are ignored.
+/// </summary>
 public class GeneralizedTimeParsingStrategy : IContentParsingStrategy
 {
+    /// <inheritdoc/>
     public string Parse(byte[] content)
     {
         //s = $"{s.Substring(0, 4)}/{s.Substring(4, 2)}/{s.Substring(6, 2)} {s.Substring(8, 2)}:{s.Substring(10, 2)}:{s.Substring(12, 2)} UTC";
@@ -35,6 +39,8 @@ public class GeneralizedTimeParsingStrategy : IContentParsingStrategy
         }
         return new DateTime(y, m, d, h, min, sec, utc ? DateTimeKind.Utc : DateTimeKind.Local).ToString();
     }
+
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
 
     public static GeneralizedTimeParsingStrategy Default { get; } = new GeneralizedTimeParsingStrategy();
 }

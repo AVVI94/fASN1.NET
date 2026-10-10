@@ -15,7 +15,7 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// </summary>
 internal static class TestCorpus
 {
-    private static readonly string Root = Path.Combine(AppContext.BaseDirectory, "TestData");
+    private static readonly string _root = Path.Combine(AppContext.BaseDirectory, "TestData");
     private static readonly Lazy<IReadOnlyDictionary<string, byte[]>> _all = new(Build);
 
     public static IReadOnlyDictionary<string, byte[]> All => _all.Value;
@@ -33,7 +33,7 @@ internal static class TestCorpus
     private static IReadOnlyDictionary<string, byte[]> Build()
     {
         var result = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        foreach (var file in Directory.GetFiles(Path.Combine(Root, "corpus"), "*.b64"))
+        foreach (var file in Directory.GetFiles(Path.Combine(_root, "corpus"), "*.b64"))
             result["file:" + Path.GetFileNameWithoutExtension(file)] = Convert.FromBase64String(File.ReadAllText(file).Trim());
 
         foreach (var (name, data) in Generated())
@@ -47,19 +47,19 @@ internal static class TestCorpus
     private static RSA LoadRsa(string file)
     {
         var rsa = RSA.Create();
-        rsa.ImportPkcs8PrivateKey(Convert.FromBase64String(File.ReadAllText(Path.Combine(Root, "keys", file))), out _);
+        rsa.ImportPkcs8PrivateKey(Convert.FromBase64String(File.ReadAllText(Path.Combine(_root, "keys", file))), out _);
         return rsa;
     }
 
     private static ECDsa LoadEc()
     {
         var ec = ECDsa.Create();
-        ec.ImportPkcs8PrivateKey(Convert.FromBase64String(File.ReadAllText(Path.Combine(Root, "keys", "ecp256.pkcs8.b64"))), out _);
+        ec.ImportPkcs8PrivateKey(Convert.FromBase64String(File.ReadAllText(Path.Combine(_root, "keys", "ecp256.pkcs8.b64"))), out _);
         return ec;
     }
 
-    private static readonly DateTimeOffset NotBefore = new(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
-    private static readonly DateTimeOffset NotAfter = new(2051, 6, 7, 8, 9, 10, TimeSpan.Zero); // GeneralizedTime range
+    private static readonly DateTimeOffset _notBefore = new(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
+    private static readonly DateTimeOffset _notAfter = new(2051, 6, 7, 8, 9, 10, TimeSpan.Zero); // GeneralizedTime range
 
     private static IEnumerable<(string, byte[])> Generated()
     {
@@ -75,7 +75,7 @@ internal static class TestCorpus
         caReq.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, true, 1, true));
         caReq.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         caReq.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(caReq.PublicKey, false));
-        using var ca = caReq.Create(caReq.SubjectName, X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1), NotBefore, NotAfter, [0x01, 0x02]);
+        using var ca = caReq.Create(caReq.SubjectName, X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1), _notBefore, _notAfter, [0x01, 0x02]);
         yield return ("rsa_root_ca", ca.RawData);
 
         var leafName = new X500DistinguishedNameBuilder();
@@ -120,7 +120,7 @@ internal static class TestCorpus
             req.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(ca, true, true));
             req.CertificateExtensions.Add(new X509Extension("2.5.29.32", CertificatePolicies(), false));
             req.CertificateExtensions.Add(new X509Extension("1.3.6.1.4.1.23624.99.2", OpaqueExtensionValue(), false));
-            using var leaf = req.Create(ca.SubjectName, X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1), NotBefore, NotAfter, [0x00, 0x9A, 0x13, 0xFA]);
+            using var leaf = req.Create(ca.SubjectName, X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1), _notBefore, _notAfter, [0x00, 0x9A, 0x13, 0xFA]);
             yield return ("rsa_leaf_" + name, leaf.RawData);
 
             if (name == "ku_all")

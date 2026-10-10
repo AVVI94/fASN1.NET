@@ -18,11 +18,11 @@ public class AllocationTests
         for (int i = 0; i < 5; i++)
             Asn1Serializer.Deserialize(data);
 
-        const int runs = 50;
+        const int RUNS = 50;
         var before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < runs; i++)
+        for (int i = 0; i < RUNS; i++)
             Asn1Serializer.Deserialize(data);
-        var perParse = (GC.GetAllocatedBytesForCurrentThread() - before) / runs;
+        var perParse = (GC.GetAllocatedBytesForCurrentThread() - before) / RUNS;
 
         Assert.True(perParse <= budgetBytes, $"parsing {name} allocated {perParse} B, budget {budgetBytes} B");
     }
@@ -37,11 +37,11 @@ public class AllocationTests
         for (int i = 0; i < 5; i++)
             Asn1Serializer.TryDeserialize(data, out _, out _);
 
-        const int runs = 50;
+        const int RUNS = 50;
         var before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < runs; i++)
+        for (int i = 0; i < RUNS; i++)
             Asn1Serializer.TryDeserialize(data, out _, out _);
-        var perParse = (GC.GetAllocatedBytesForCurrentThread() - before) / runs;
+        var perParse = (GC.GetAllocatedBytesForCurrentThread() - before) / RUNS;
 
         Assert.True(perParse <= 300, $"rejecting a truncated certificate allocated {perParse} B");
     }

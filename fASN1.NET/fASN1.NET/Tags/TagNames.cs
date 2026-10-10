@@ -8,10 +8,10 @@ namespace fASN1.NET.Tags;
 /// </summary>
 internal static class TagNames
 {
-    private static readonly string[] Context = Build(n => $"[{n}]");
-    private static readonly string[] ApplicationNames = Build(n => $"Application_{n}");
-    private static readonly string[] PrivateNames = Build(n => $"Private_{n}");
-    private static readonly string[] UnknownNames = Build(n => $"Unknown_{n}");
+    private static readonly string[] _contextNames = Build(n => $"[{n}]");
+    private static readonly string[] _applicationNames = Build(n => $"Application_{n}");
+    private static readonly string[] _privateNames = Build(n => $"Private_{n}");
+    private static readonly string[] _unknownNames = Build(n => $"Unknown_{n}");
 
     private static string[] Build(Func<int, string> name)
     {
@@ -21,8 +21,8 @@ internal static class TagNames
         return names;
     }
 
-    public static string ContextSpecific(int tagNumber) => Context[tagNumber & 0x1F];
-    public static string Application(int tagNumber) => ApplicationNames[tagNumber & 0x1F];
-    public static string Private(int tagNumber) => PrivateNames[tagNumber & 0x1F];
-    public static string Unknown(int tagNumber) => UnknownNames[tagNumber & 0x1F];
+    public static string ContextSpecific(int tagNumber) => _contextNames[tagNumber & 0x1F];
+    public static string Application(int tagNumber) => _applicationNames[tagNumber & 0x1F];
+    public static string Private(int tagNumber) => _privateNames[tagNumber & 0x1F];
+    public static string Unknown(int tagNumber) => _unknownNames[tagNumber & 0x1F];
 }

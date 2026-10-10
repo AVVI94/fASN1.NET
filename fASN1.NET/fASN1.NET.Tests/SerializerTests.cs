@@ -422,9 +422,9 @@ public class SerializerTests
 public class MockTag : ITag
 {
     public int TagNumber { get; set; }
-    public string TagName { get; set; }
-    public byte[] Content { get; set; }
-    public IList<ITag> Children { get; set; }
+    public string TagName { get; set; } = "";
+    public byte[] Content { get; set; } = [];
+    public IList<ITag> Children { get; set; } = [];
     public int TagClass { get; }
     public bool IsConstructed { get; }
     public bool IsUniversal { get; }

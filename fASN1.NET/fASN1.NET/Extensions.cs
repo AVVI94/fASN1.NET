@@ -11,6 +11,9 @@ using IPAddress = fASN1.NET.Tags.San.IPAddress;
 
 namespace fASN1.NET;
 
+/// <summary>
+/// Reads common fields of X.509 certificates and PKCS#10 certificate requests from a parsed tree.
+/// </summary>
 public static partial class Extensions
 {
     /// <summary>
@@ -126,6 +129,12 @@ public static partial class Extensions
         }
     }
 
+    /// <summary>
+    /// Attempts to get the I.CA certificate interconnection extension (OID 1.3.6.1.4.1.23624.4.7) from the specified X.509v3 certificate tag.
+    /// </summary>
+    /// <param name="certificate">The certificate tag to check.</param>
+    /// <param name="intercon">The interconnection data.</param>
+    /// <returns><see langword="true"/> if the extension was found; otherwise, <see langword="false"/>.</returns>
     public static bool TryGetICACertIntercon(this ITag certificate, out ICACertIntercon intercon)
     {
         intercon = default;
@@ -488,7 +497,7 @@ public static partial class Extensions
             if (GetSubjectDirectoryAttributesRaw(tag) is not ITag sda)
                 return false;
             attrs = SubjectDirectory.SubjectDirectoryAttributes.FromTag(sda);
-            return true;
+            return attrs is not null;
         }
         catch
         {
@@ -497,20 +506,36 @@ public static partial class Extensions
     }
 }
 
+/// <summary>
+/// Attributes of a distinguished name (the subject or issuer of a certificate); see <see cref="Extensions.ToOidString"/> for their OIDs.
+/// </summary>
 public enum SubjectItemKind
 {
+    /// <summary>commonName (CN), 2.5.4.3.</summary>
     CommonName,
+    /// <summary>givenName, 2.5.4.42.</summary>
     GivenName,
+    /// <summary>surname (SN), 2.5.4.4.</summary>
     Surname,
+    /// <summary>countryName (C), 2.5.4.6.</summary>
     CountryName,
+    /// <summary>organizationName (O), 2.5.4.10.</summary>
     OrganizationName,
+    /// <summary>organizationalUnitName (OU), 2.5.4.11.</summary>
     OrganizationUnitName,
+    /// <summary>organizationIdentifier, 2.5.4.97.</summary>
     OrganizationIdentifier,
+    /// <summary>stateOrProvinceName (ST), 2.5.4.8.</summary>
     StateOrProvinceName,
+    /// <summary>localityName (L), 2.5.4.7.</summary>
     LocalityName,
+    /// <summary>streetAddress, 2.5.4.9.</summary>
     StreetAddress,
+    /// <summary>postalCode, 2.5.4.17.</summary>
     PostalCode,
+    /// <summary>serialNumber, 2.5.4.5.</summary>
     SerialNumber,
+    /// <summary>title, 2.5.4.12.</summary>
     Title,
 }
 public static partial class Extensions
