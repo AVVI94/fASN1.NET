@@ -62,7 +62,7 @@ public static partial class Asn1Serializer
     /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryDeserialize(byte[] data, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
     {
-        return TryDeserialize(data, new DefaultTagFactory(), out tag, out error);
+        return TryDeserialize(data, DefaultFactory, out tag, out error);
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ public static partial class Asn1Serializer
     /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryDeserialize(Stream stream, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
     {
-        return TryDeserialize(stream, new DefaultTagFactory(), out tag, out error);
+        return TryDeserialize(stream, DefaultFactory, out tag, out error);
     }
 
     /// <summary>
@@ -130,7 +130,7 @@ public static partial class Asn1Serializer
     /// <returns>The deserialized ASN.1 tag.</returns>
     public static ITag Deserialize(byte[] data)
     {
-        return Deserialize(data, new DefaultTagFactory());
+        return Deserialize(data, DefaultFactory);
     }
 
     /// <summary>
@@ -154,7 +154,7 @@ public static partial class Asn1Serializer
     /// <returns>The deserialized ASN.1 tag.</returns>
     public static ITag Deserialize(Stream stream)
     {
-        return Deserialize(stream, new DefaultTagFactory());
+        return Deserialize(stream, DefaultFactory);
     }
 
     /// <summary>
@@ -211,6 +211,9 @@ public static partial class Asn1Serializer
 
         /// <summary>A probe saw an EOC among its direct children, so its content is not a run of elements.</summary>
         public bool ContainsEoc { get; set; }
+
+        /// <summary>Index of this frame's first child in the pending-children buffer of <see cref="FrameStack"/>.</summary>
+        public int FirstChild { get; set; }
     }
 
     /// <summary>
@@ -232,9 +235,36 @@ public static partial class Asn1Serializer
     /// Parses one element and all of its descendants. Every element whose children are being read is a
     /// <see cref="ContainerFrame"/> on an explicit stack, so nesting depth does not consume call stack space.
     /// </summary>
+    /// <summary>Stateless, so one instance serves every call that does not pass its own factory.</summary>
+    private static readonly DefaultTagFactory DefaultFactory = new();
+
+    /// <summary>
+    /// One frame stack per thread, reused across calls so a parse does not allocate its working buffers.
+    /// Taken out of the slot while in use, so a nested parse (for example from a custom factory) gets its own.
+    /// </summary>
+    [ThreadStatic]
+    private static FrameStack? t_cachedFrames;
+
     private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
     {
-        var frames = new FrameStack();
+        var frames = t_cachedFrames ?? new FrameStack();
+        t_cachedFrames = null;
+        try
+        {
+            return ParseLoop(stream, ref error, tagFactory, frames);
+        }
+        finally
+        {
+            if (frames.Reset())
+                t_cachedFrames = frames;
+        }
+    }
+
+    /// <summary>
+    /// The parse loop, kept free of exception handlers so the JIT can keep its locals in registers.
+    /// </summary>
+    private static ITag? ParseLoop(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames)
+    {
         var needElement = true;
         ITag? completed = null;
         while (true)
@@ -243,7 +273,7 @@ public static partial class Asn1Serializer
             if (step == Step.EndOfContents)
             {
                 var ended = frames.Pop();
-                completed = EndFrame(stream, ref error, in ended, success: true);
+                completed = EndFrame(stream, ref error, frames, in ended, success: true);
                 needElement = false;
                 continue;
             }
@@ -258,11 +288,11 @@ public static partial class Asn1Serializer
                 {
                     // A failed child ends the frame unsuccessfully.
                     var failed = frames.Pop();
-                    completed = EndFrame(stream, ref error, in failed, success: false);
+                    completed = EndFrame(stream, ref error, frames, in failed, success: false);
                     needElement = false;
                     continue;
                 }
-                frames.Top.Tag.Children.Add(completed);
+                frames.AddChild(completed);
             }
 
             ref var top = ref frames.Top;
@@ -279,17 +309,75 @@ public static partial class Asn1Serializer
             {
                 error = $"Content size is not correct for container at offset {done.Start}";
             }
-            completed = EndFrame(stream, ref error, in done, exact);
+            completed = EndFrame(stream, ref error, frames, in done, exact);
         }
     }
 
     /// <summary>
     /// Array-backed stack of frames that hands out the top frame by reference, so frames are not copied
-    /// on every access the way <see cref="Stack{T}.Peek"/> would copy them.
+    /// on every access the way <see cref="Stack{T}.Peek"/> would copy them. It also buffers the children of
+    /// the open frames, so each finished container gets a list of exactly the right size.
     /// </summary>
     private sealed class FrameStack
     {
         private ContainerFrame[] _items = new ContainerFrame[16];
+        private ITag[] _children = new ITag[16];
+        private int _childCount;
+
+        /// <summary>Number of buffered children; a new frame's children start here.</summary>
+        public int PendingChildren => _childCount;
+
+        public void AddChild(ITag child)
+        {
+            if (_childCount == _children.Length)
+            {
+                Array.Resize(ref _children, _children.Length * 2);
+            }
+            _children[_childCount++] = child;
+        }
+
+        /// <summary>Moves the children buffered since <paramref name="first"/> into <paramref name="tag"/>.</summary>
+        public void AttachChildren(ITag tag, int first)
+        {
+            var count = _childCount - first;
+            if (count > 0)
+            {
+                if (tag is TagBase builtIn && builtIn.ChildCount == 0)
+                {
+                    var list = new List<ITag>(count);
+                    for (int i = first; i < _childCount; i++)
+                        list.Add(_children[i]);
+                    builtIn.SetParsedChildren(list);
+                }
+                else
+                {
+                    // A custom tag, or one the factory created with children already: append through its own list.
+                    var target = tag.Children;
+                    for (int i = first; i < _childCount; i++)
+                        target.Add(_children[i]);
+                }
+            }
+            DropChildren(first);
+        }
+
+        /// <summary>Discards the children buffered since <paramref name="first"/>.</summary>
+        public void DropChildren(int first)
+        {
+            Array.Clear(_children, first, _childCount - first);
+            _childCount = first;
+        }
+
+        /// <summary>
+        /// Clears the stack after a parse, including one that ended in an exception, so it holds no tags.
+        /// Returns <see langword="false"/> when it grew too large to be worth keeping for the next parse.
+        /// </summary>
+        public bool Reset()
+        {
+            Array.Clear(_items, 0, Count);
+            Count = 0;
+            DropChildren(0);
+            return _items.Length <= 256 && _children.Length <= 4096;
+        }
 
         public int Count { get; private set; }
 
@@ -386,9 +474,11 @@ public static partial class Asn1Serializer
         if (!frame.IsIndefinite && frame.End > stream.Length)
         {
             error = $"Container at offset {frame.Start} has a length of {frame.Length}, which is past the end of the stream";
-            completed = EndFrame(stream, ref error, in frame, success: false);
+            frame.FirstChild = frames.PendingChildren;
+            completed = EndFrame(stream, ref error, frames, in frame, success: false);
             return Step.Completed;
         }
+        frame.FirstChild = frames.PendingChildren;
         frames.Push(frame);
         completed = null;
         return Step.Opened;
@@ -397,12 +487,16 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Completes an element once its children have been read, successfully or not.
     /// </summary>
-    private static ITag? EndFrame(Stream stream, ref string? error, in ContainerFrame frame, bool success)
+    private static ITag? EndFrame(Stream stream, ref string? error, FrameStack frames, in ContainerFrame frame, bool success)
     {
         if (frame.Kind == FrameKind.Container)
         {
             if (!success)
+            {
+                frames.DropChildren(frame.FirstChild);
                 return null;
+            }
+            frames.AttachChildren(frame.Tag, frame.FirstChild);
             // An indefinite-length container has no content of its own, even when it has no children.
             return frame.IsIndefinite ? frame.Tag : FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
         }
@@ -410,9 +504,14 @@ public static partial class Asn1Serializer
         if (!success || frame.ContainsEoc)
         {
             // Not a complete run of nested elements: keep the content as raw bytes.
+            frames.DropChildren(frame.FirstChild);
             if (TagBase.CountChildren(frame.Tag) > 0)
                 frame.Tag.Children.Clear();
             stream.Position = frame.Start;
+        }
+        else
+        {
+            frames.AttachChildren(frame.Tag, frame.FirstChild);
         }
         return FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
     }
