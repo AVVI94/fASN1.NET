@@ -1,16 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.Diagnostics;
 
 
 namespace fASN1.NET.Tags;
 
-public class Integer : ITag
+public class Integer : TagBase
 {
-    public Integer(byte[]? content = null)
+    public Integer(byte[]? content = null) : base(content)
     {
-        Content = content ?? [];
-        Children = new List<ITag>();
     }
     public Integer(int value) : this(Convert(BitConverter.GetBytes(value)))
     {
@@ -34,22 +31,17 @@ public class Integer : ITag
     {
     }
 
-    public int TagNumber { get; } = 2;
-    public string TagName { get; } = Tag.Integer.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed { get; } = false;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 2;
+    public override string TagName => "Integer";
+    public override int TagClass => 0;
+    public override bool IsConstructed => false;
 
     private static byte[] Convert(byte[] value)
     {
         var span = value.AsSpan();
         if (BitConverter.IsLittleEndian)
         {
-            span.Reverse(); 
+            span.Reverse();
         }
 
         bool allZero = true;

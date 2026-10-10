@@ -410,7 +410,8 @@ public static partial class Asn1Serializer
         if (!success || frame.ContainsEoc)
         {
             // Not a complete run of nested elements: keep the content as raw bytes.
-            frame.Tag.Children.Clear();
+            if (TagBase.CountChildren(frame.Tag) > 0)
+                frame.Tag.Children.Clear();
             stream.Position = frame.Start;
         }
         return FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
@@ -421,7 +422,7 @@ public static partial class Asn1Serializer
     /// </summary>
     private static ITag? FinishElement(Stream stream, ref string? error, ITag tag, long start, long? length)
     {
-        if (tag.Children.Count == 0)
+        if (TagBase.CountChildren(tag) == 0)
         {
             if (length is null)
             {

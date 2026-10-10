@@ -1,22 +1,12 @@
-﻿using System.Collections.Generic;
-
-
 namespace fASN1.NET.Tags;
 
-public class Enumerated : ITag
+public class Enumerated : TagBase
 {
-    public Enumerated(byte[]? content = null)
+    public Enumerated(byte[]? content = null) : base(content)
     {
-        Content = content ?? [];
-        Children = new List<ITag>();
     }
-    public int TagNumber { get; } = 10;
-    public string TagName { get; } = Tag.Enumerated.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed { get; } = false;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 10;
+    public override string TagName => "Enumerated";
+    public override int TagClass => 0;
+    public override bool IsConstructed => false;
 }

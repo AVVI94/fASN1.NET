@@ -1,29 +1,21 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 
 namespace fASN1.NET.Tags;
 
-public class PrintableString : ITag
+public class PrintableString : TagBase
 {
-    public PrintableString(byte[]? content = null, IList<ITag>? children = null)
+    public PrintableString(byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
-        Content = content ?? [];
-        Children = children ?? new List<ITag>();
     }
     public PrintableString(string text) : this(GetBytes(text))
     {
     }
-    public int TagNumber { get; } = 19;
-    public string TagName { get; } = Tag.PrintableString.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 19;
+    public override string TagName => "PrintableString";
+    public override int TagClass => 0;
 
     public static void EnsureValidValue(string input)
     {

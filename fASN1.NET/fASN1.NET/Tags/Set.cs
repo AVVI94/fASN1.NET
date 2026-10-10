@@ -1,22 +1,14 @@
-﻿using System.Collections.Generic;
-
+using System.Collections.Generic;
 
 namespace fASN1.NET.Tags;
 
-public class Set : ITag
+public class Set : TagBase
 {
-    public Set(List<ITag>? children = null)
+    public Set(List<ITag>? children = null) : base(null, children)
     {
-        Content = [];
-        Children = children ?? new List<ITag>();
     }
-    public int TagNumber { get; } = 49;
-    public string TagName { get; } = Tag.Set.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => true;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 49;
+    public override string TagName => "Set";
+    public override int TagClass => 0;
+    public override bool IsConstructed => true;
 }

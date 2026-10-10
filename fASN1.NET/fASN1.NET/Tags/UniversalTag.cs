@@ -1,23 +1,18 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 
 namespace fASN1.NET.Tags;
 
-public class UniversalTag : ITag
+public class UniversalTag : TagBase
 {
-    public UniversalTag(int tagNumber, byte[]? content = null, IList<ITag>? children = null)
+    private readonly int _tagNumber;
+
+    public UniversalTag(int tagNumber, byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
-        TagNumber = tagNumber;
-        Content = content ?? [];
-        Children = children ?? new List<ITag>();
+        _tagNumber = tagNumber;
     }
-    public int TagNumber { get; }
-    public string TagName => "Universal_" + TagNumber;
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => _tagNumber;
+    public override string TagName => "Universal_" + TagNumber;
+    public override int TagClass => 0;
+    public override bool IsUniversal => true;
 }

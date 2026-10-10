@@ -1,31 +1,26 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 
 namespace fASN1.NET.Tags;
 
-public class BitString : ITag
+public class BitString : TagBase
 {
-    public BitString(byte[]? content = null, IList<ITag>? children = null)
+    public BitString(byte[]? content = null, IList<ITag>? children = null) : base(WithUnusedBits(content), children)
     {
-        if (content is not null)
-        {
-            var _ = CalculateUnusedBits(content);
-            Content = [(byte)_, .. content];
-        }
-        else
-            Content = [];
-        Children = children ?? new List<ITag>();
     }
     public BitString(byte content) : this([content], null) { }
 
-    public int TagNumber { get; } = 3;
-    public string TagName { get; } = Tag.BitString.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
+    public override int TagNumber => 3;
+    public override string TagName => "BitString";
+    public override int TagClass => 0;
+
+    private static byte[]? WithUnusedBits(byte[]? content)
+    {
+        if (content is null)
+            return null;
+        var _ = CalculateUnusedBits(content);
+        return [(byte)_, .. content];
+    }
 
     public static int CalculateUnusedBits(byte[] bitStringBytes)
     {
@@ -41,5 +36,4 @@ public class BitString : ITag
         }
         return unusedBits;
     }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
 }

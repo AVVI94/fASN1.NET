@@ -1,23 +1,18 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 
 namespace fASN1.NET.Tags;
-public class ContextSpecific_3 : ITag
+
+public class ContextSpecific_3 : TagBase
 {
-    public ContextSpecific_3(int tagNumber, byte[]? content = null, IList<ITag>? children = null)
+    private readonly int _tagNumber;
+
+    public ContextSpecific_3(int tagNumber, byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
-        TagNumber = tagNumber;
-        TagName = $"[3]";
-        Content = content ?? [];
-        Children = children ?? new List<ITag>();
+        _tagNumber = tagNumber;
     }
-    public int TagNumber { get; }
-    public string TagName { get; }
-    public int TagClass { get; } = 2;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; }
-    public bool IsEoc { get; } = false;
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => _tagNumber;
+    public override string TagName => "[3]";
+    public override int TagClass => 2;
+    public override bool IsUniversal => false;
 }

@@ -1,30 +1,22 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 
 namespace fASN1.NET.Tags;
 
-public class NumericString : ITag
+public class NumericString : TagBase
 {
-    public NumericString(byte[]? content = null, IList<ITag>? children = null)
+    public NumericString(byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
-        Content = content ?? [];
-        Children = children ?? new List<ITag>();
     }
     public NumericString(string text) : this(GetBytes(text))
     {
     }
 
-    public int TagNumber { get; } = 18;
-    public string TagName { get; } = Tag.NumericString.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 18;
+    public override string TagName => "NumericString";
+    public override int TagClass => 0;
 
     static byte[] GetBytes(string text)
     {

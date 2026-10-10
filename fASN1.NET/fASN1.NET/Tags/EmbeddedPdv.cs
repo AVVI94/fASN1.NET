@@ -1,22 +1,14 @@
-﻿using System.Collections.Generic;
-
+using System.Collections.Generic;
 
 namespace fASN1.NET.Tags;
 
-public class EmbeddedPdv : ITag
+public class EmbeddedPdv : TagBase
 {
-    public EmbeddedPdv(List<ITag>? children = null)
+    public EmbeddedPdv(List<ITag>? children = null) : base(null, children)
     {
-        Content = [];
-        Children = children ?? new List<ITag>();
     }
-    public int TagNumber { get; } = 0x2B; // universal 11, always constructed (like Sequence = 0x30)
-    public string TagName { get; } = Tag.EmbeddedPDV.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => true;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+    public override int TagNumber => 0x2B; // universal 11, always constructed (like Sequence = 0x30)
+    public override string TagName => "EmbeddedPDV";
+    public override int TagClass => 0;
+    public override bool IsConstructed => true;
 }

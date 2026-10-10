@@ -1,34 +1,30 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 
 namespace fASN1.NET.Tags;
 
-public class GeneralizedTime : ITag
+public class GeneralizedTime : TagBase
 {
-    public GeneralizedTime(byte[]? content = null, IList<ITag>? children = null)
+    public GeneralizedTime(byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
-        Content = content ?? [];
-        Children = children ?? new List<ITag>();
     }
-    public GeneralizedTime(DateTime time)
+    public GeneralizedTime(DateTime time) : base(Encode(time))
+    {
+    }
+
+    private static byte[] Encode(DateTime time)
     {
         var val = time.ToString("yyyyMMddHHmmss.f");
         if (time.Kind == DateTimeKind.Utc)
         {
             val += "Z";
         }
-        Content = Encoding.ASCII.GetBytes(val);
-        Children = [];
+        return Encoding.ASCII.GetBytes(val);
     }
-    public int TagNumber { get; } = 24;
-    public string TagName { get; } = Tag.GeneralizedTime.ToString2();
-    public int TagClass { get; } = 0;
-    public bool IsConstructed => Content.Length == 0 && Children.Count > 0;
-    public bool IsUniversal { get; } = true;
-    public bool IsEoc { get; }
-    public IList<ITag> Children { get; }
-    public byte[] Content { get; set; }
-    public ITag this[int index] { get => Children[index]; set => Children[index] = value; }
+
+    public override int TagNumber => 24;
+    public override string TagName => "GeneralizedTime";
+    public override int TagClass => 0;
 }
