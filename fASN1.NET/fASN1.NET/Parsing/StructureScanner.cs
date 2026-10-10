@@ -101,9 +101,14 @@ internal ref struct StructureScanner<TSource>
     private ElementScanResult ScanNextElement()
     {
         var elementStart = _source.Position;
-        var identifier = _source.ReadByte();
         var isInsideIndefiniteLength = _openElements.Count > 0 && _openElements.Last.IsIndefiniteLength;
+        if (isInsideIndefiniteLength && elementStart >= CurrentLimit)
+        {
+            // The enclosing definite-length element ends here, so the end-of-contents marker is missing.
+            return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart));
+        }
 
+        var identifier = _source.ReadByte();
         if (identifier == -1)
         {
             return Fail(isInsideIndefiniteLength
@@ -117,6 +122,8 @@ internal ref struct StructureScanner<TSource>
         }
         if (!TryReadLength(elementStart, out var contentLength))
             return ElementScanResult.Failed;
+        if (_source.Position > CurrentLimit)
+            return FailOutsideContainer();
 
         if (identifier == Ber.END_OF_CONTENTS)
         {
@@ -157,13 +164,21 @@ internal ref struct StructureScanner<TSource>
     }
 
     /// <summary>Starts reading an element's content as children, unless its declared content cannot fit.</summary>
-    private ElementScanResult OpenChildren(in OpenElement element)
+    private ElementScanResult OpenChildren(OpenElement element)
     {
         if (!element.IsIndefiniteLength && element.ContentEnd > _source.Length)
         {
             _failure = new ParseFailure(ParseFailureKind.ContainerPastEndOfData, element.ContentStart, element.ContentLength!.Value);
             return CloseElement(element, childrenSucceeded: false);
         }
+        if (!element.IsIndefiniteLength && element.ContentEnd > CurrentLimit)
+        {
+            _failure = OutsideContainerFailure();
+            return CloseElement(element, childrenSucceeded: false);
+        }
+
+        element.Limit = element.IsIndefiniteLength ? CurrentLimit : element.ContentEnd;
+        element.LimitOwnerStart = element.IsIndefiniteLength ? CurrentLimitOwnerStart : element.ContentStart;
         _openElements.Add(element);
         return ElementScanResult.ChildrenOpened;
     }
@@ -217,6 +232,8 @@ internal ref struct StructureScanner<TSource>
             return Fail(new ParseFailure(ParseFailureKind.IndefiniteLengthPrimitive, contentStart));
         if (contentLength.Value > _source.Length - _source.Position)
             return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, contentStart, tagName: tagName));
+        if (_source.Position + contentLength.Value > CurrentLimit)
+            return FailOutsideContainer();
 
         _source.Position += contentLength.Value;
         return ElementScanResult.Succeeded;
@@ -260,6 +277,16 @@ internal ref struct StructureScanner<TSource>
         contentLength = length;
         return true;
     }
+
+    /// <summary>Offset that the element being scanned may not cross; see <see cref="OpenElement.Limit"/>.</summary>
+    private readonly long CurrentLimit => _openElements.Count > 0 ? _openElements.Last.Limit : _source.Length;
+
+    private readonly long CurrentLimitOwnerStart => _openElements.Count > 0 ? _openElements.Last.LimitOwnerStart : 0;
+
+    /// <summary>The element being scanned crosses the end of a definite-length element that contains it.</summary>
+    private readonly ParseFailure OutsideContainerFailure() => new(ParseFailureKind.ContainerSizeMismatch, CurrentLimitOwnerStart);
+
+    private ElementScanResult FailOutsideContainer() => Fail(OutsideContainerFailure());
 
     private ElementScanResult Fail(ParseFailure failure)
     {

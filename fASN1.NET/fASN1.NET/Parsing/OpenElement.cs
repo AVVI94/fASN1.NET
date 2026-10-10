@@ -14,6 +14,16 @@ internal struct OpenElement
     /// <summary>Declared content length; <see langword="null"/> for indefinite length.</summary>
     public long? ContentLength;
 
+    /// <summary>
+    /// Offset that nothing inside this element may cross: its own content end when it has a definite length,
+    /// otherwise the limit of the element that contains it. Bounding every element by its innermost
+    /// definite-length ancestor keeps a failed probe from scanning past its own content.
+    /// </summary>
+    public long Limit;
+
+    /// <summary>Content start of the definite-length element that sets <see cref="Limit"/>, for error messages.</summary>
+    public long LimitOwnerStart;
+
     /// <summary>Number of direct children read so far.</summary>
     public int ChildCount;
 
