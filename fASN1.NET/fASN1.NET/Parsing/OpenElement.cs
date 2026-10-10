@@ -28,15 +28,15 @@ internal struct OpenElement
     public long LimitOwnerStart;
 
     /// <summary>
-    /// The element is an encapsulation probe or lies inside one, so every length inside it must be in DER form
-    /// (definite, minimal). <see cref="Asn1Serializer.Serialize"/> writes DER lengths, so encapsulated children
-    /// in any other form would re-encode to different bytes and change the OCTET STRING's value.
+    /// The element is an encapsulation probe or lies inside one, so everything inside it must be in the form
+    /// <see cref="Asn1Serializer.Serialize"/> writes: DER lengths (definite, minimal) and SET children in DER order.
+    /// Encapsulated children in any other form would re-encode to different bytes and change the OCTET STRING's value.
     /// </summary>
-    public bool RequiresDerLengths;
+    public bool RequiresDer;
 
     /// <summary>
-    /// Extent of the last direct child read, for a SET that <see cref="RequiresDerLengths"/>: its children must be in
-    /// DER order too, or Serialize would reorder them and change the OCTET STRING's value.
+    /// Extent of the last direct child read, for a SET that <see cref="RequiresDer"/>, whose children must be in
+    /// DER order.
     /// </summary>
     public long PreviousChildStart, PreviousChildEnd;
 

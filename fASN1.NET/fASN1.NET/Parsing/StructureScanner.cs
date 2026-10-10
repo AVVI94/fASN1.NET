@@ -65,7 +65,7 @@ internal ref struct StructureScanner<TSource>
         {
             if (result == ElementScanResult.ChildrenOpened)
             {
-                result = InnermostElementExpectsAnotherChild() ? ScanNextElement() : CloseCompletedInnermostElement();
+                result = ContinueInnermostElement();
                 continue;
             }
 
@@ -83,14 +83,7 @@ internal ref struct StructureScanner<TSource>
                     break;
 
                 default:
-                    // The element just completed is the next child of the innermost open element.
-                    if (!IsInDerSetOrder())
-                    {
-                        result = Fail(new ParseFailure(ParseFailureKind.SetNotInDerOrderInOctetString, _completedElementStart));
-                        break;
-                    }
-                    _openElements.Last.ChildCount++;
-                    result = InnermostElementExpectsAnotherChild() ? ScanNextElement() : CloseCompletedInnermostElement();
+                    result = CompleteChild();
                     break;
             }
         }
@@ -133,7 +126,7 @@ internal ref struct StructureScanner<TSource>
             return ElementScanResult.Failed;
         if (_source.Position > CurrentLimit)
             return FailOutsideContainer();
-        if (!isDerLength && _openElements.Count > 0 && _openElements.Last.RequiresDerLengths)
+        if (!isDerLength && _openElements.Count > 0 && _openElements.Last.RequiresDer)
             return Fail(new ParseFailure(ParseFailureKind.NonDerLengthInOctetString, elementStart));
 
         if (identifier == Ber.END_OF_CONTENTS)
@@ -192,11 +185,25 @@ internal ref struct StructureScanner<TSource>
 
         element.Limit = element.IsIndefiniteLength ? CurrentLimit : element.ContentEnd;
         element.LimitOwnerStart = element.IsIndefiniteLength ? CurrentLimitOwnerStart : element.ContentStart;
-        element.RequiresDerLengths = element.Kind == OpenElementKind.EncapsulationProbe
-            || (_openElements.Count > 0 && _openElements.Last.RequiresDerLengths);
+        element.RequiresDer = element.Kind == OpenElementKind.EncapsulationProbe
+            || (_openElements.Count > 0 && _openElements.Last.RequiresDer);
         _openElements.Add(element);
         return ElementScanResult.ChildrenOpened;
     }
+
+    /// <summary>The element just completed is the next child of the innermost open element.</summary>
+    private ElementScanResult CompleteChild()
+    {
+        if (!IsInDerSetOrder())
+            return Fail(new ParseFailure(ParseFailureKind.SetNotInDerOrderInOctetString, _completedElementStart));
+
+        _openElements.Last.ChildCount++;
+        return ContinueInnermostElement();
+    }
+
+    /// <summary>Reads the next child of the innermost open element, or closes it when its content is used up.</summary>
+    private ElementScanResult ContinueInnermostElement()
+        => InnermostElementExpectsAnotherChild() ? ScanNextElement() : CloseCompletedInnermostElement();
 
     private bool InnermostElementExpectsAnotherChild()
     {
@@ -308,7 +315,7 @@ internal ref struct StructureScanner<TSource>
     private bool IsInDerSetOrder()
     {
         ref var parent = ref _openElements.Last;
-        if (!parent.RequiresDerLengths || _nodes[parent.NodeIndex].Identifier != Ber.SET)
+        if (!parent.RequiresDer || _nodes[parent.NodeIndex].Identifier != Ber.SET)
             return true;
 
         var end = _source.Position;
