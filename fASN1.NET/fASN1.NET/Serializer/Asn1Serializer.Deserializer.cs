@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -75,15 +76,10 @@ public static partial class Asn1Serializer
     /// <returns><see langword="true"/> if the deserialization succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
     {
-        var source = ArraySource.Rent(data);
-        try
-        {
-            return TryDeserialize(source, tagFactory, out tag, out error);
-        }
-        finally
-        {
-            ArraySource.Return(source);
-        }
+        if (data is null)
+            throw new ArgumentNullException(nameof(data));
+        var source = new ArrayByteSource(data);
+        return TryDeserializeCore(ref source, tagFactory, out tag, out error);
     }
 
     /// <summary>
@@ -110,17 +106,14 @@ public static partial class Asn1Serializer
     {
         try
         {
-            error = null;
-            if (stream is null or { Length: 0 })
+            if (stream is null)
             {
                 error = "Stream is null or empty.";
                 tag = null;
                 return false;
             }
-            tag = DeserializeInternal(stream, ref error, tagFactory);
-            if (tag is not null)
-                error = null;
-            return tag is not null;
+            var source = new StreamByteSource(stream);
+            return TryDeserializeCore(ref source, tagFactory, out tag, out error);
         }
         catch (Exception ex) //just to be safe
         {
@@ -148,15 +141,10 @@ public static partial class Asn1Serializer
     /// <returns>The deserialized ASN.1 tag.</returns>
     public static ITag Deserialize(byte[] data, ITagFactory tagFactory)
     {
-        var source = ArraySource.Rent(data);
-        try
-        {
-            return Deserialize(source, tagFactory);
-        }
-        finally
-        {
-            ArraySource.Return(source);
-        }
+        if (data is null)
+            throw new ArgumentNullException(nameof(data));
+        var source = new ArrayByteSource(data);
+        return DeserializeCore(ref source, tagFactory, nameof(data));
     }
 
     /// <summary>
@@ -181,60 +169,147 @@ public static partial class Asn1Serializer
     /// <returns>The deserialized ASN.1 tag.</returns>
     public static ITag Deserialize(Stream stream, ITagFactory tagFactory)
     {
-        string? error = null;
-        if (stream is null or { Length: 0 })
+        if (stream is null)
             throw new ArgumentException("Stream is null or empty.", nameof(stream));
-        return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
+        var source = new StreamByteSource(stream);
+        return DeserializeCore(ref source, tagFactory, nameof(stream));
     }
-
     // Parsing runs in two passes over the input:
     //  1. Scan: read every identifier and length, validate the structure and settle each OCTET STRING
     //     encapsulation probe, without creating any tag. The final tree is recorded as a flat pre-order
     //     list of NodeRecords. A failed probe just truncates that list back to the probe itself.
-    //  2. Materialize: create exactly the recorded tags, each container's children list at its final
+    //  2. Materialize: create exactly the recorded tags, each container's children at their final
     //     size, and read only the content that ends up in the tree.
     // So nothing is allocated for structure that is later discarded, and invalid input allocates nothing
-    // but the error message.
+    // but the error message. The working buffers are rented from ArrayPool<T>.Shared for the duration of
+    // one call; the parser keeps no state of its own between calls.
 
     /// <summary>Stateless, so one instance serves every call that does not pass its own factory.</summary>
     private static readonly DefaultTagFactory DefaultFactory = new();
 
-    /// <summary>
-    /// Per-thread working buffers, reused across calls. Taken out of the slot while in use, so a nested
-    /// parse (for example from a custom factory) gets its own.
-    /// </summary>
-    [ThreadStatic]
-    private static ParseState? t_cachedState;
-
-    private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
+    private static bool TryDeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory, out ITag? tag, out string? error)
+        where TSource : struct, IByteSource
     {
-        var state = t_cachedState ?? new ParseState();
-        t_cachedState = null;
+        try
+        {
+            error = null;
+            if (source.Length == 0)
+            {
+                error = "Stream is null or empty.";
+                tag = null;
+                return false;
+            }
+            tag = DeserializeInternal(ref source, ref error, tagFactory);
+            if (tag is not null)
+                error = null;
+            return tag is not null;
+        }
+        catch (Exception ex) //just to be safe
+        {
+            tag = null;
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static ITag DeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory, string paramName)
+        where TSource : struct, IByteSource
+    {
+        string? error = null;
+        if (source.Length == 0)
+            throw new ArgumentException("Stream is null or empty.", paramName);
+        return DeserializeInternal(ref source, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
+    }
+
+    private static ITag? DeserializeInternal<TSource>(ref TSource source, ref string? error, ITagFactory tagFactory)
+        where TSource : struct, IByteSource
+    {
+        var buffers = ParseBuffers.Rent();
+        var traits = TraitsLookup.For(tagFactory);
         var failure = default(ParseError);
         try
         {
-            var traits = state.TraitsFor(tagFactory);
-            if (!Scan(stream, ref failure, traits, state))
+            if (!Scan(ref source, ref failure, traits, ref buffers))
             {
                 error = failure.Format();
                 return null;
             }
-            var end = stream.Position;
-            var root = Materialize(stream, ref failure, tagFactory, state);
+            var end = source.Position;
+            var root = Materialize(ref source, ref failure, tagFactory, ref buffers);
             if (root is null)
             {
                 error = failure.Format();
                 return null;
             }
-            stream.Position = end;
+            source.Position = end;
             return root;
         }
         finally
         {
-            if (state.Reset())
-                t_cachedState = state;
+            traits.Release();
+            buffers.Return();
         }
     }
+
+    #region Byte sources
+
+    /// <summary>
+    /// The input of a parse. Implemented by structs and used through generic parameters, so the JIT emits
+    /// a specialized parser per source with direct calls and nothing to allocate.
+    /// </summary>
+    private interface IByteSource
+    {
+        long Length { get; }
+        long Position { get; set; }
+        int ReadByte();
+        int Read(byte[] buffer, int offset, int count);
+    }
+
+    /// <summary>A byte array read from offset 0.</summary>
+    private struct ArrayByteSource(byte[] data) : IByteSource
+    {
+        private int _position;
+
+        public readonly long Length => data.Length;
+
+        public long Position
+        {
+            readonly get => _position;
+            set => _position = (int)value;
+        }
+
+        public int ReadByte() => _position < data.Length ? data[_position++] : -1;
+
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            var n = Math.Min(count, data.Length - _position);
+            if (n <= 0)
+                return 0;
+            Buffer.BlockCopy(data, _position, buffer, offset, n);
+            _position += n;
+            return n;
+        }
+    }
+
+    /// <summary>A seekable stream, read from its current position.</summary>
+    private readonly struct StreamByteSource(Stream stream) : IByteSource
+    {
+        private readonly long _length = stream.Length;
+
+        public long Length => _length;
+
+        public long Position
+        {
+            get => stream.Position;
+            set => stream.Position = value;
+        }
+
+        public int ReadByte() => stream.ReadByte();
+
+        public int Read(byte[] buffer, int offset, int count) => stream.Read(buffer, offset, count);
+    }
+
+    #endregion
 
     #region Errors
 
@@ -308,37 +383,59 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Traits per identifier for one factory. Each identifier is asked of the factory once, by creating a
-    /// tag; the decisions depend only on a freshly created tag, as they always have.
+    /// The default factory's traits for all 256 identifiers. Built once and never modified afterwards,
+    /// so it is safe to share.
     /// </summary>
-    private sealed class TraitsTable(ITagFactory factory)
-    {
-        private readonly TagTraits[] _traits = new TagTraits[256];
+    private static readonly TagTraits[] DefaultTraits = BuildDefaultTraits();
 
-        public ITagFactory Factory { get; } = factory;
+    private static TagTraits[] BuildDefaultTraits()
+    {
+        var traits = new TagTraits[256];
+        for (int i = 0; i < traits.Length; i++)
+            traits[i] = TagTraits.Of(DefaultFactory.Create(i), i);
+        return traits;
+    }
+
+    /// <summary>
+    /// Traits per identifier for the factory of one parse. For a custom factory the table is rented for
+    /// the call and each identifier is asked of the factory once, by creating a tag; the decisions depend
+    /// only on a freshly created tag, as they always have.
+    /// </summary>
+    private readonly struct TraitsLookup
+    {
+        private readonly TagTraits[] _table;
+        private readonly ITagFactory _factory;
+        private readonly bool _rented;
+
+        private TraitsLookup(TagTraits[] table, ITagFactory factory, bool rented)
+        {
+            _table = table;
+            _factory = factory;
+            _rented = rented;
+        }
+
+        public static TraitsLookup For(ITagFactory factory)
+            => ReferenceEquals(factory, DefaultFactory)
+                ? new TraitsLookup(DefaultTraits, factory, rented: false)
+                : new TraitsLookup(ArrayPool<TagTraits>.Shared.Rent(256), factory, rented: true);
 
         public TagTraits this[int identifier]
         {
             get
             {
-                ref var traits = ref _traits[identifier];
+                ref var traits = ref _table[identifier];
                 if (!traits.IsKnown)
-                    traits = TagTraits.Of(Factory.Create(identifier), identifier);
+                    traits = TagTraits.Of(_factory.Create(identifier), identifier);
                 return traits;
             }
         }
 
-        /// <summary>The default factory's table, filled once for every identifier so it can be shared by all threads.</summary>
-        public static TraitsTable CreateComplete(ITagFactory factory)
+        public void Release()
         {
-            var table = new TraitsTable(factory);
-            for (int i = 0; i < 256; i++)
-                _ = table[i];
-            return table;
+            if (_rented)
+                ArrayPool<TagTraits>.Shared.Return(_table, clearArray: true);
         }
     }
-
-    private static readonly TraitsTable DefaultTraits = TraitsTable.CreateComplete(DefaultFactory);
 
     #endregion
 
@@ -400,9 +497,6 @@ public static partial class Asn1Serializer
 
         /// <summary>A probe saw an EOC among its direct children, so its content is not a run of elements.</summary>
         public bool ContainsEoc;
-
-        /// <summary>Tag name, for the error message if a rolled-back probe's content is missing.</summary>
-        public string Name;
     }
 
     /// <summary>Entry of the materialize pass's parent stack.</summary>
@@ -419,23 +513,30 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Buffers of both passes. Array-backed, handing out entries by reference so structs are not copied.
+    /// The buffers of one parse, rented from <see cref="ArrayPool{T}.Shared"/> and returned when the parse
+    /// ends. Entries are handed out by reference so the structs are not copied.
     /// </summary>
-    private sealed class ParseState
+    private struct ParseBuffers
     {
-        public ContainerFrame[] Frames = new ContainerFrame[16];
+        public ContainerFrame[] Frames;
         public int FrameCount;
-        public NodeRecord[] Records = new NodeRecord[64];
+        public NodeRecord[] Records;
         public int RecordCount;
-        public OpenParent[] Parents = new OpenParent[16];
-        private TraitsTable? _customTraits;
+        public OpenParent[] Parents;
+
+        public static ParseBuffers Rent() => new()
+        {
+            Frames = ArrayPool<ContainerFrame>.Shared.Rent(16),
+            Records = ArrayPool<NodeRecord>.Shared.Rent(128),
+            Parents = ArrayPool<OpenParent>.Shared.Rent(16),
+        };
 
         public ref ContainerFrame Top => ref Frames[FrameCount - 1];
 
         public void Push(in ContainerFrame frame)
         {
             if (FrameCount == Frames.Length)
-                Array.Resize(ref Frames, Frames.Length * 2);
+                Grow(ref Frames, FrameCount, clear: false);
             Frames[FrameCount++] = frame;
         }
 
@@ -444,30 +545,34 @@ public static partial class Asn1Serializer
         public int AddRecord(in NodeRecord record)
         {
             if (RecordCount == Records.Length)
-                Array.Resize(ref Records, Records.Length * 2);
+                Grow(ref Records, RecordCount, clear: false);
             Records[RecordCount] = record;
             return RecordCount++;
         }
 
-        public TraitsTable TraitsFor(ITagFactory factory)
+        public ref OpenParent ParentAt(int depth)
         {
-            if (ReferenceEquals(factory, DefaultFactory))
-                return DefaultTraits;
-            if (_customTraits is null || !ReferenceEquals(_customTraits.Factory, factory))
-                _customTraits = new TraitsTable(factory);
-            return _customTraits;
+            if (depth == Parents.Length)
+                Grow(ref Parents, depth, clear: true);
+            return ref Parents[depth];
         }
 
         /// <summary>
-        /// Clears the buffers after a parse, including one that ended in an exception, so they hold no tags.
-        /// Returns <see langword="false"/> when they grew too large to be worth keeping for the next parse.
+        /// Returns the buffers. Frames and records hold no references; the parent stack does, so it is cleared.
         /// </summary>
-        public bool Reset()
+        public readonly void Return()
         {
-            FrameCount = 0;
-            RecordCount = 0;
-            Array.Clear(Parents, 0, Parents.Length);
-            return Frames.Length <= 256 && Records.Length <= 16384 && Parents.Length <= 256;
+            ArrayPool<ContainerFrame>.Shared.Return(Frames);
+            ArrayPool<NodeRecord>.Shared.Return(Records);
+            ArrayPool<OpenParent>.Shared.Return(Parents, clearArray: true);
+        }
+
+        private static void Grow<T>(ref T[] array, int used, bool clear)
+        {
+            var bigger = ArrayPool<T>.Shared.Rent(array.Length * 2);
+            System.Array.Copy(array, bigger, used);
+            ArrayPool<T>.Shared.Return(array, clear);
+            array = bigger;
         }
     }
 
@@ -494,16 +599,17 @@ public static partial class Asn1Serializer
     /// Scans one element and all of its descendants, recording the final tree. Every element whose
     /// children are being read is a frame on an explicit stack, so nesting depth does not consume call stack space.
     /// </summary>
-    private static bool Scan(Stream stream, ref ParseError error, TraitsTable traits, ParseState state)
+    private static bool Scan<TSource>(ref TSource source, ref ParseError error, in TraitsLookup traits, ref ParseBuffers state)
+        where TSource : struct, IByteSource
     {
         var needElement = true;
         var ok = false;
         while (true)
         {
-            var step = needElement ? ScanElement(stream, ref error, traits, state, out ok) : Step.Completed;
+            var step = needElement ? ScanElement(ref source, ref error, traits, ref state, out ok) : Step.Completed;
             if (step == Step.EndOfContents)
             {
-                ok = EndFrame(stream, ref error, state, state.Pop(), success: true);
+                ok = EndFrame(ref source, ref error, traits, ref state, state.Pop(), success: true);
                 needElement = false;
                 continue;
             }
@@ -514,7 +620,7 @@ public static partial class Asn1Serializer
                 if (!ok)
                 {
                     // A failed child ends the frame unsuccessfully.
-                    ok = EndFrame(stream, ref error, state, state.Pop(), success: false);
+                    ok = EndFrame(ref source, ref error, traits, ref state, state.Pop(), success: false);
                     needElement = false;
                     continue;
                 }
@@ -522,7 +628,7 @@ public static partial class Asn1Serializer
             }
 
             ref var top = ref state.Top;
-            if (top.IsIndefinite || stream.Position < top.End)
+            if (top.IsIndefinite || source.Position < top.End)
             {
                 needElement = true;
                 continue;
@@ -530,12 +636,12 @@ public static partial class Asn1Serializer
 
             var done = state.Pop();
             needElement = false;
-            var exact = stream.Position == done.End;
+            var exact = source.Position == done.End;
             if (!exact)
             {
                 error = new ParseError(ErrorKind.ContainerSizeMismatch, done.Start);
             }
-            ok = EndFrame(stream, ref error, state, done, exact);
+            ok = EndFrame(ref source, ref error, traits, ref state, done, exact);
         }
     }
 
@@ -543,11 +649,12 @@ public static partial class Asn1Serializer
     /// Reads the identifier and length of the next element and records it. A leaf is scanned completely;
     /// an element whose children have to be read is pushed as a frame.
     /// </summary>
-    private static Step ScanElement(Stream stream, ref ParseError error, TraitsTable traits, ParseState state, out bool ok)
+    private static Step ScanElement<TSource>(ref TSource source, ref ParseError error, in TraitsLookup traits, ref ParseBuffers state, out bool ok)
+        where TSource : struct, IByteSource
     {
         ok = false;
-        var elementStart = stream.Position;
-        var tagNumber = stream.ReadByte();
+        var elementStart = source.Position;
+        var tagNumber = source.ReadByte();
         var inIndefinite = state.FrameCount > 0 && state.Top.IsIndefinite;
         if (tagNumber == -1)
         {
@@ -562,7 +669,7 @@ public static partial class Asn1Serializer
             error = new ParseError(ErrorKind.MultiByteTag, elementStart);
             return Step.Completed;
         }
-        long? length = DecodeLength(stream, elementStart, ref error, out var valid);
+        long? length = DecodeLength(ref source, elementStart, ref error, out var valid);
         if (!valid)
         {
             return Step.Completed;
@@ -585,7 +692,7 @@ public static partial class Asn1Serializer
         }
 
         var tagTraits = traits[tagNumber];
-        var start = stream.Position;
+        var start = source.Position;
         var record = state.AddRecord(new NodeRecord { Identifier = tagNumber, Start = start, Length = length ?? 0, IsIndefinite = length is null });
 
         if (tagTraits.Constructed || (length is not null && tagTraits.Probe))
@@ -596,26 +703,26 @@ public static partial class Asn1Serializer
                 Record = record,
                 Start = start,
                 Length = length,
-                Name = tagTraits.Name,
             };
-            if (!frame.IsIndefinite && frame.End > stream.Length)
+            if (!frame.IsIndefinite && frame.End > source.Length)
             {
                 error = new ParseError(ErrorKind.ContainerPastEnd, frame.Start, frame.Length!.Value);
-                ok = EndFrame(stream, ref error, state, frame, success: false);
+                ok = EndFrame(ref source, ref error, traits, ref state, frame, success: false);
                 return Step.Completed;
             }
             state.Push(frame);
             return Step.Opened;
         }
 
-        ok = SkipContent(stream, ref error, tagTraits.Name, start, length);
+        ok = SkipContent(ref source, ref error, tagTraits.Name, start, length);
         return Step.Completed;
     }
 
     /// <summary>
     /// Completes an element once its children have been scanned, successfully or not.
     /// </summary>
-    private static bool EndFrame(Stream stream, ref ParseError error, ParseState state, in ContainerFrame frame, bool success)
+    private static bool EndFrame<TSource>(ref TSource source, ref ParseError error, in TraitsLookup traits, ref ParseBuffers state, in ContainerFrame frame, bool success)
+        where TSource : struct, IByteSource
     {
         ref var record = ref state.Records[frame.Record];
         if (frame.Kind == FrameKind.Container)
@@ -637,26 +744,27 @@ public static partial class Asn1Serializer
         // Not a complete run of nested elements: forget the children and keep the content as raw bytes.
         state.RecordCount = frame.Record + 1;
         record.RolledBack = true;
-        stream.Position = frame.Start;
-        return SkipContent(stream, ref error, frame.Name, frame.Start, frame.Length);
+        source.Position = frame.Start;
+        return SkipContent(ref source, ref error, traits[record.Identifier].Name, frame.Start, frame.Length);
     }
 
     /// <summary>
     /// Checks that a leaf's content is present and moves past it; it is read in the materialize pass.
     /// </summary>
-    private static bool SkipContent(Stream stream, ref ParseError error, string tagName, long start, long? length)
+    private static bool SkipContent<TSource>(ref TSource source, ref ParseError error, string tagName, long start, long? length)
+        where TSource : struct, IByteSource
     {
         if (length is null)
         {
             error = new ParseError(ErrorKind.IndefinitePrimitive, start);
             return false;
         }
-        if (length.Value > stream.Length - stream.Position)
+        if (length.Value > source.Length - source.Position)
         {
             error = new ParseError(ErrorKind.ContentPastEnd, start, name: tagName);
             return false;
         }
-        stream.Position += length.Value;
+        source.Position += length.Value;
         return true;
     }
 
@@ -668,7 +776,8 @@ public static partial class Asn1Serializer
     /// Creates the recorded tree. Records are in pre-order, so each container's children are the
     /// subtrees that follow it.
     /// </summary>
-    private static ITag? Materialize(Stream stream, ref ParseError error, ITagFactory tagFactory, ParseState state)
+    private static ITag? Materialize<TSource>(ref TSource source, ref ParseError error, ITagFactory tagFactory, ref ParseBuffers state)
+        where TSource : struct, IByteSource
     {
         ITag? root = null;
         var depth = 0;
@@ -689,7 +798,7 @@ public static partial class Asn1Serializer
                     tag.Children.Clear();
                 if (TagBase.CountChildren(tag) == 0)
                 {
-                    var content = ReadContent(stream, ref error, tag, record.Start, record.Length);
+                    var content = ReadContent(ref source, ref error, tag, record.Start, record.Length);
                     if (content is null)
                         return null;
                     tag.Content = content;
@@ -717,9 +826,7 @@ public static partial class Asn1Serializer
                     parent.Array = builtIn.SetParsedChildren(record.ChildCount);
                 else
                     parent.List = tag.Children; // a custom tag, or one the factory created with children already
-                if (depth == state.Parents.Length)
-                    Array.Resize(ref state.Parents, state.Parents.Length * 2);
-                state.Parents[depth++] = parent;
+                state.ParentAt(depth++) = parent;
             }
 
             while (depth > 0 && state.Parents[depth - 1].Remaining == 0)
@@ -733,16 +840,17 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Reads a leaf's content. Streams may return fewer bytes than requested, so it reads until complete.
     /// </summary>
-    private static byte[]? ReadContent(Stream stream, ref ParseError error, ITag tag, long start, long length)
+    private static byte[]? ReadContent<TSource>(ref TSource source, ref ParseError error, ITag tag, long start, long length)
+        where TSource : struct, IByteSource
     {
         if (length == 0)
             return [];
-        stream.Position = start;
+        source.Position = start;
         var content = new byte[length];
         var read = 0;
         while (read < content.Length)
         {
-            var n = stream.Read(content, read, content.Length - read);
+            var n = source.Read(content, read, content.Length - read);
             if (n == 0)
             {
                 error = new ParseError(ErrorKind.ContentReadShort, start, name: tag.TagName);
@@ -755,13 +863,13 @@ public static partial class Asn1Serializer
 
     #endregion
 
-
     /// <summary>
     /// Reads the length octets of the element whose identifier is at <paramref name="elementStart"/>.
     /// Returns <see langword="null"/> with <paramref name="valid"/> set for indefinite length; on failure
     /// <paramref name="valid"/> is <see langword="false"/> and <paramref name="error"/> says why.
     /// </summary>
-    static long? DecodeLength(Stream data, long elementStart, ref ParseError error, out bool valid)
+    static long? DecodeLength<TSource>(ref TSource data, long elementStart, ref ParseError error, out bool valid)
+        where TSource : struct, IByteSource
     {
         valid = false;
         var first = data.ReadByte();
