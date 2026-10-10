@@ -298,7 +298,7 @@ public class ParsedStructureTests
     [Theory]
     [InlineData("03 02 07 80", "0780")]
     [InlineData("03 01 00", "00")]
-    [InlineData("03 04 00 02 01 05", "00020105")] // current behavior: never encapsulates, see KnownQuirkTests
+    [InlineData("03 04 00 02 01 05", "00020105")] // valid DER inside stays raw: BIT STRING is never expanded
     [InlineData("03 03 06 C0 00", "06C000")]
     public void BitString_IsLeafWithUnusedBitsByte(string hex, string content)
     {

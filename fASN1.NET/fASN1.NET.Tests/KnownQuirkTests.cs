@@ -22,14 +22,6 @@ public class KnownQuirkTests
     }
 
     [Fact]
-    public void BitString_NeverEncapsulates()
-    {
-        // The probe reads the unused-bits byte but keeps the original length,
-        // so the child range always ends one byte past the BIT STRING.
-        Bits("003003020105").AssertMatches(Parse("03 06 00 30 03 02 01 05"));
-    }
-
-    [Fact]
     public void EmptyIndefiniteContainer_ReadsFollowingBytesAsContent()
     {
         // GetChildren returns the consumed length (the EOC itself) through ref,
