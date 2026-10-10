@@ -3,9 +3,10 @@ using fASN1.NET.Tests.Infrastructure;
 namespace fASN1.NET.Tests;
 
 /// <summary>
-/// Seeded, deterministic fuzzing of the public contract (see <see cref="Contract"/>) on valid, odd and
-/// corrupted input. Seeds are fixed, so any failure reproduces on every run and the failing input is
-/// printed in the message.
+/// Seeded, deterministic fuzzing. Every input must satisfy the public contract (see <see cref="Contract"/>),
+/// and whenever the System.Formats.Asn1 oracle accepts an input, the parser must accept it too and
+/// produce the same tree. Seeds are fixed, so any failure reproduces on every run and the failing input
+/// is printed in the message.
 /// </summary>
 public class FuzzTests
 {
@@ -13,13 +14,13 @@ public class FuzzTests
 
     [Theory]
     [MemberData(nameof(Names))]
-    public void MutatedCorpus_SatisfiesContract(string name)
+    public void MutatedCorpus_SatisfiesContractAndOracle(string name)
     {
         var original = TestCorpus.Get(name);
         var rng = new Random(StableSeed(name));
         for (int i = 0; i < 1500; i++)
         {
-            Contract.Check(Mutate(original, rng));
+            CheckAgainstOracle(Mutate(original, rng));
         }
     }
 
@@ -28,16 +29,49 @@ public class FuzzTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
-    public void RandomBerTrees_SatisfyContract(int seed)
+    public void RandomBerTrees_SatisfyContractAndOracle(int seed)
     {
         var rng = new Random(seed * 7919);
-        for (int i = 0; i < 1500; i++)
+        int oracleAccepted = 0;
+        const int count = 1500;
+        for (int i = 0; i < count; i++)
         {
             var data = BerGenerator.Document(rng);
-            Contract.Check(data);
+            if (CheckAgainstOracle(data))
+                oracleAccepted++;
             if (rng.Next(2) == 0)
-                Contract.Check(Mutate(data, rng));
+                CheckAgainstOracle(Mutate(data, rng));
         }
+        // Keeps the oracle comparison from silently becoming vacuous if the generator drifts.
+        Assert.True(oracleAccepted > count / 2, $"only {oracleAccepted} of {count} generated documents were valid BER");
+    }
+
+    /// <summary>
+    /// Checks the contract and, when the oracle can decode the input, the complete tree.
+    /// Returns whether the oracle accepted the input.
+    /// </summary>
+    private static bool CheckAgainstOracle(byte[] data)
+    {
+        var (tag, error) = Contract.Check(data);
+        OracleNode oracle;
+        try
+        {
+            oracle = OracleNode.Decode(data);
+        }
+        catch (Exception ex) when (ex is System.Formats.Asn1.AsnContentException or ArgumentException or IndexOutOfRangeException)
+        {
+            return false;
+        }
+        try
+        {
+            Assert.True(tag is not null, $"the oracle accepts the input but the parser failed: {error}");
+            oracle.AssertMatches(tag!);
+        }
+        catch (Xunit.Sdk.XunitException ex)
+        {
+            throw new Xunit.Sdk.XunitException($"Input {Convert.ToHexString(data)}{Environment.NewLine}{ex.Message}");
+        }
+        return true;
     }
 
     [Theory]

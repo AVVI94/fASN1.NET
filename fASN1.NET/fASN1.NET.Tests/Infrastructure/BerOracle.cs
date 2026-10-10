@@ -14,7 +14,7 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid BER
 /// elements (none of them EOC) is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
-/// <item>Only single-byte identifiers are supported.</item>
+/// <item>Only single-byte identifiers are supported, and primitive EMBEDDED PDV (0x0B) is excluded.</item>
 /// </list>
 /// </remarks>
 internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNode> Children)
@@ -25,6 +25,8 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
     {
         if ((src[0] & 0x1F) == 0x1F)
             throw new AsnContentException("Multi-byte identifiers are outside the supported subset");
+        if (src[0] == 0x0B)
+            throw new AsnContentException("Primitive EMBEDDED PDV is outside the supported subset: the EmbeddedPdv class is always constructed");
         AsnDecoder.ReadEncodedValue(src, AsnEncodingRules.BER, out var contentOffset, out var contentLength, out consumed);
         var identifier = src[0];
         var content = src.Slice(contentOffset, contentLength);

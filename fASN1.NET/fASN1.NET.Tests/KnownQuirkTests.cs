@@ -5,9 +5,9 @@ using static fASN1.NET.Tests.Infrastructure.Expected;
 namespace fASN1.NET.Tests;
 
 /// <summary>
-/// Characterization tests for parser behavior that is known to be wrong or surprising.
-/// They pin the current behavior so the iterative rewrite cannot change it by accident.
-/// When one of these is fixed, move the test to the corrected behavior.
+/// Characterization tests for known bugs outside the parser itself: tag classes that report the wrong
+/// TagNumber or IsEoc, and the serializer writing definite lengths only. They pin the current behavior
+/// so it does not change by accident. When one of these is fixed, move the test to the corrected behavior.
 /// </summary>
 public class KnownQuirkTests
 {
