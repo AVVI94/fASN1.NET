@@ -55,8 +55,8 @@ Text output (`TagToString`, `ContentToString`, the parsing strategies):
 
 Certificate helpers:
 - `IsCertificate` checks every tbsCertificate field up to subjectPublicKeyInfo; `IsCertificateRequest` checks the
-  whole certificationRequestInfo of RFC 2986, so a version 1 certificate with serial number 0 is no longer taken
-  for a request.
+  certificationRequestInfo of RFC 2986 (a missing attributes field is tolerated), so a version 1 certificate with
+  serial number 0 is no longer taken for a request.
 - `TryGetSubjectAlternativeName` returns `false` when there is no SAN extension (it returned `true`).
 - `TryGetSubjectKeyIdentifier` and `TryGetAuthorityKeyIdentifier` always return uppercase hexadecimal of the key
   identifier bytes. `TryGetAuthorityKeyIdentifier` returns `false` when the extension has no keyIdentifier.

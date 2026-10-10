@@ -71,19 +71,20 @@ internal static class InternalExtensions
     /// attributes [0] IMPLICIT SET OF Attribute }</c>.
     /// </summary>
     /// <remarks>
-    /// The attributes field is required, even when empty. Checking every field keeps a version 1 certificate with
-    /// serial number 0, whose first fields look the same, from being taken for a request.
+    /// RFC 2986 requires the attributes field even when empty, but requests without it are accepted, as some
+    /// encoders leave it out. Checking the other fields keeps a version 1 certificate with serial number 0, whose
+    /// first field looks the same, from being taken for a request.
     /// </remarks>
     public static bool IsCertificationRequest(ITag tag)
     {
-        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence, Children.Count: 4 } info)
+        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence, Children.Count: 3 or 4 } info)
             return false;
 
         return info.Children[0] is { TagNumber: (int)Tag.Integer } version
                && version.Content.SequenceEqual(_version0Sequence)
                && IsName(info.Children[1])
                && IsSubjectPublicKeyInfo(info.Children[2])
-               && info.Children[3].TagNumber == ContextConstructed(0);
+               && (info.Children.Count == 3 || info.Children[3].TagNumber == ContextConstructed(0));
     }
 
     private static bool IsSignedSequence(ITag tag)
@@ -135,7 +136,10 @@ internal static class InternalExtensions
         if (!certificatesOnly && IsCertificationRequest(root))
         {
             // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF value }; extensionRequest has one value.
-            foreach (var attribute in root.Children[0].Children[3].Children)
+            var info = root.Children[0];
+            if (info.Children.Count < 4)
+                return []; // no attributes
+            foreach (var attribute in info.Children[3].Children)
             {
                 if (attribute is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
                     && IsOid(attribute.Children[0], _extensionRequestSequence)

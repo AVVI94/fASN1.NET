@@ -154,6 +154,35 @@ public class CertificateHelperTests
     }
 
     [Fact]
+    public void RequestWithoutAttributes_IsRecognized()
+    {
+        // RFC 2986 requires attributes [0] even when empty, but some encoders leave it out.
+        var writer = new AsnWriter(AsnEncodingRules.DER);
+        using (writer.PushSequence())
+        {
+            using (writer.PushSequence())
+            {
+                writer.WriteInteger(0);
+                writer.WriteEncodedValue(Name([("2.5.4.3", "no-attributes")]));
+                using (writer.PushSequence())
+                {
+                    WriteAlgorithm(writer);
+                    writer.WriteBitString([0x00]);
+                }
+            }
+            WriteAlgorithm(writer);
+            writer.WriteBitString([0x00]);
+        }
+        var tag = Asn1Serializer.Deserialize(writer.Encode());
+
+        Assert.True(tag.IsCertificateRequest());
+        Assert.True(tag.TryGetCertificateRequestSubjectItem(SubjectItemKind.CommonName, out var cn));
+        Assert.Equal(["no-attributes"], cn);
+        Assert.False(tag.TryGetKeyUsage(out _));
+        Assert.False(tag.TryGetSubjectAlternativeName(out _));
+    }
+
+    [Fact]
     public void Version1CertificateWithSerialZero_IsNeitherARequestNorAV3Certificate()
     {
         // tbsCertificate without the version field starts with INTEGER 0, like certificationRequestInfo did.
