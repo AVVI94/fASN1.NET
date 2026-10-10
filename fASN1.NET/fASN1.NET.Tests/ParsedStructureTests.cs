@@ -59,8 +59,7 @@ public class ParsedStructureTests
     {
         var tag = Parse([(byte)identifier, 0x01, 0x7F]);
 
-        // TagNumber 0 and IsEoc true are current behavior, see KnownQuirkTests.
-        new Expected(typeof(Unknown), 0, $"Unknown_{identifier & 0x1F}", 0, false, true, true, [0x7F], []).AssertMatches(tag);
+        new Expected(typeof(Unknown), identifier, $"Unknown_{identifier & 0x1F}", 0, false, true, false, [0x7F], []).AssertMatches(tag);
     }
 
     [Theory]
@@ -92,16 +91,28 @@ public class ParsedStructureTests
     [Fact]
     public void Application_PrimitiveAndConstructed()
     {
-        // TagNumber 0 is current behavior, see KnownQuirkTests.
-        AssertTree("41 01 07", new Expected(typeof(Application), 0, "Application_1", 1, false, false, false, [0x07], []));
-        AssertTree("63 03 02 01 05", new Expected(typeof(Application), 0, "Application_3", 1, true, false, false, [], [Int("05")]));
+        AssertTree("41 01 07", new Expected(typeof(Application), 0x41, "Application_1", 1, false, false, false, [0x07], []));
+        AssertTree("63 03 02 01 05", new Expected(typeof(Application), 0x63, "Application_3", 1, true, false, false, [], [Int("05")]));
+    }
+
+    [Theory]
+    [InlineData("41 01 07")]
+    [InlineData("63 03 02 01 05")]
+    [InlineData("C2 01 07")]
+    [InlineData("E4 03 02 01 05")]
+    [InlineData("0D 01 7F")]
+    [InlineData("24 03 04 01 41")]
+    [InlineData("BE 03 02 01 05")]
+    public void NonStandardClasses_SerializeBackToTheSameBytes(string hex)
+    {
+        Assert.Equal(H(hex), Asn1Serializer.Serialize(Parse(hex)));
     }
 
     [Fact]
     public void Private_PrimitiveAndConstructed()
     {
-        AssertTree("C2 01 07", new Expected(typeof(Private), 0, "Private_2", 3, false, false, false, [0x07], []));
-        AssertTree("E4 03 02 01 05", new Expected(typeof(Private), 0, "Private_4", 3, true, false, false, [], [Int("05")]));
+        AssertTree("C2 01 07", new Expected(typeof(Private), 0xC2, "Private_2", 3, false, false, false, [0x07], []));
+        AssertTree("E4 03 02 01 05", new Expected(typeof(Private), 0xE4, "Private_4", 3, true, false, false, [], [Int("05")]));
     }
 
     #endregion
@@ -272,9 +283,8 @@ public class ParsedStructureTests
     [Fact]
     public void Indefinite_EndsOnlyAtEndOfContentsBytes()
     {
-        // A constructed OCTET STRING (0x24) is an Unknown tag that reports IsEoc (a tag-class bug, see
-        // KnownQuirkTests); it must still be an ordinary child and must not end the SEQUENCE.
-        var unknown = new Expected(typeof(Unknown), 0, "Unknown_4", 0, true, true, true, [], [Octets("41")]);
+        // A constructed OCTET STRING (0x24) is an Unknown tag; it is an ordinary child and must not end the SEQUENCE.
+        var unknown = new Expected(typeof(Unknown), 0x24, "Unknown_4", 0, true, true, false, [], [Octets("41")]);
         AssertTree("30 80 24 80 04 01 41 00 00 02 01 05 00 00", Seq(unknown, Int("05")));
     }
 
@@ -329,7 +339,7 @@ public class ParsedStructureTests
     [Fact]
     public void Probe_UnknownChildIsNotEoc()
     {
-        var unknown = new Expected(typeof(Unknown), 0, "Unknown_13", 0, false, true, true, [0x07], []);
+        var unknown = new Expected(typeof(Unknown), 0x0D, "Unknown_13", 0, false, true, false, [0x07], []);
         AssertTree("04 03 0D 01 07", OctetsWith(unknown));
     }
 

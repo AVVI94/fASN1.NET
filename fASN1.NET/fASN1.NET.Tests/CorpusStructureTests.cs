@@ -26,27 +26,6 @@ public class CorpusStructureTests
         Assert.Equal(oracle.CountNodes(), TreeAssert.CountNodes(tag));
     }
 
-    /// <summary>
-    /// DER samples that cannot round-trip because of a known serializer-side bug.
-    /// </summary>
-    private static readonly Dictionary<string, string> KnownSerializationMismatches = new()
-    {
-        ["syn:der_mixed"] =
-            "Contains Application and Private tags, whose TagNumber is left at 0, so Serialize writes identifier 0x00. " +
-            "See KnownQuirkTests.ApplicationPrivateUnknown_TagNumberIsZero.",
-    };
-
-    [Fact]
-    public void KnownSerializationMismatches_StillMismatch()
-    {
-        foreach (var name in KnownSerializationMismatches.Keys)
-        {
-            var data = TestCorpus.Get(name);
-            var serialized = Asn1Serializer.Serialize(Asn1Serializer.Deserialize(data));
-            Assert.False(data.AsSpan().SequenceEqual(serialized), $"{name} now round-trips; remove it from {nameof(KnownSerializationMismatches)}.");
-        }
-    }
-
     [Theory]
     [MemberData(nameof(Names))]
     public void Parse_TreeIsWellFormed(string name)
@@ -59,8 +38,6 @@ public class CorpusStructureTests
     [MemberData(nameof(DerNames))]
     public void Serialize_ReproducesDerInputExactly(string name)
     {
-        if (KnownSerializationMismatches.ContainsKey(name))
-            return;
         var data = TestCorpus.Get(name);
         var tag = Asn1Serializer.Deserialize(data);
 
@@ -73,8 +50,6 @@ public class CorpusStructureTests
     [MemberData(nameof(DerNames))]
     public void Parse_SerializeParse_GivesIdenticalTree(string name)
     {
-        if (KnownSerializationMismatches.ContainsKey(name))
-            return;
         var first = Asn1Serializer.Deserialize(TestCorpus.Get(name));
         var second = Asn1Serializer.Deserialize(Asn1Serializer.Serialize(first));
         TreeAssert.Equal(first, second);

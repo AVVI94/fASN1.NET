@@ -5,8 +5,8 @@ using static fASN1.NET.Tests.Infrastructure.Expected;
 namespace fASN1.NET.Tests;
 
 /// <summary>
-/// Characterization tests for known bugs outside the parser itself: tag classes that report the wrong
-/// TagNumber or IsEoc, and the serializer writing definite lengths only. They pin the current behavior
+/// Characterization tests for known bugs outside the parser itself: EMBEDDED PDV reporting the wrong
+/// TagNumber, and the serializer writing definite lengths only. They pin the current behavior
 /// so it does not change by accident. When one of these is fixed, move the test to the corrected behavior.
 /// </summary>
 public class KnownQuirkTests
@@ -19,25 +19,6 @@ public class KnownQuirkTests
         Contract.Check(data);
         Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out var error), error);
         return tag;
-    }
-
-    [Fact]
-    public void ApplicationPrivateUnknown_TagNumberIsZero()
-    {
-        Assert.Equal(0, Parse("41 01 07").TagNumber);
-        Assert.Equal(0, Parse("C1 01 07").TagNumber);
-        Assert.Equal(0, Parse("0D 01 07").TagNumber);
-        Assert.Equal(H("000107"), Asn1Serializer.Serialize(Parse("41 01 07")));
-    }
-
-    [Fact]
-    public void UnknownUniversalTag_IsReportedAsEoc()
-    {
-        var tag = Parse("24 03 04 01 41");
-
-        Assert.IsType<Unknown>(tag);
-        Assert.True(tag.IsEoc);
-        Assert.Single(tag.Children);
     }
 
     [Fact]

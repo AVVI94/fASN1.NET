@@ -81,8 +81,8 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
         Check(path, nameof(ITag.TagName), TagIdentity.ExpectedName(id), actual.TagName);
         Check(path, nameof(ITag.TagClass), id >> 6, actual.TagClass);
         Check(path, nameof(ITag.IsUniversal), id >> 6 == 0, actual.IsUniversal);
-        if (TagIdentity.TagNumberIsReliable(id))
-            Check(path, nameof(ITag.TagNumber), TagIdentity.ExpectedTagNumber(id), actual.TagNumber);
+        Check(path, nameof(ITag.TagNumber), TagIdentity.ExpectedTagNumber(id), actual.TagNumber);
+        Check(path, nameof(ITag.IsEoc), id == 0x00, actual.IsEoc);
         Check(path, nameof(ITag.Content), Convert.ToHexString(Content), Convert.ToHexString(actual.Content));
         Check(path, "Children.Count", Children.Count, actual.Children.Count);
         for (int i = 0; i < Children.Count; i++)
@@ -158,10 +158,7 @@ internal static class TagIdentity
     };
 
     /// <summary>
-    /// Application, Private and Unknown currently leave TagNumber at 0 (see KnownQuirkTests);
-    /// their identity is still checked through type, TagName and TagClass.
+    /// Known universal classes report their fixed number; every other class reports the identifier byte.
     /// </summary>
-    public static bool TagNumberIsReliable(int id) => (id >> 6) == 2 || ((id >> 6) == 0 && Universal.ContainsKey(id));
-
-    public static int ExpectedTagNumber(int id) => (id >> 6) == 2 ? id : Universal[id].TagNumber;
+    public static int ExpectedTagNumber(int id) => (id >> 6) == 0 && Universal.TryGetValue(id, out var u) ? u.TagNumber : id;
 }

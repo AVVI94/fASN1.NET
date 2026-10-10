@@ -6,6 +6,7 @@ public class Private : ITag
 {
     public Private(int tagNumber, byte[]? content = null, List<ITag>? children = null)
     {
+        TagNumber = tagNumber;
         Content = content ?? [];
         Children = children ?? [];
         TagClass = tagNumber >> 6;

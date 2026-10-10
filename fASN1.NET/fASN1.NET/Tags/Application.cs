@@ -6,6 +6,7 @@ public class Application : ITag
 {
     public Application(int tagNumber, byte[]? content = null, List<ITag>? children = null)
     {
+        TagNumber = tagNumber;
         Content = content ?? [];
         Children = children ?? [];
         TagClass = tagNumber >> 6;
