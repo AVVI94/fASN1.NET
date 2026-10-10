@@ -58,7 +58,7 @@ public class FuzzTests
         {
             oracle = OracleNode.Decode(data);
         }
-        catch (Exception ex) when (ex is System.Formats.Asn1.AsnContentException or ArgumentException or IndexOutOfRangeException)
+        catch (System.Formats.Asn1.AsnContentException)
         {
             return false;
         }

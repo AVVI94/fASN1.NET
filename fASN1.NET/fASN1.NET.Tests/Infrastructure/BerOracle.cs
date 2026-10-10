@@ -75,17 +75,19 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
     /// <summary>The value of a constructed string, as System.Formats.Asn1 joins it.</summary>
     private static byte[] Join(ReadOnlySpan<byte> encoded, int number)
     {
-        var tag = new Asn1Tag(System.Formats.Asn1.TagClass.Universal, number, isConstructed: true);
         if (number == 3)
         {
             // .NET validates the segments, but clears the unused bits; like a primitive BIT STRING, the value keeps
             // them as encoded, so the bits are taken from the segments themselves.
-            AsnDecoder.ReadBitString(encoded, AsnEncodingRules.BER, out var unusedBits, out _, tag);
+            AsnDecoder.ReadBitString(encoded, AsnEncodingRules.BER, out var unusedBits, out _);
             var data = new List<byte>();
             AppendSegmentData(encoded, data);
             return [(byte)unusedBits, .. data];
         }
-        return AsnDecoder.ReadOctetString(encoded, AsnEncodingRules.BER, out _, tag);
+        // The segments of every other string type are OCTET STRINGs (X.690 §8.23.6), but .NET reads only OCTET STRINGs
+        // that way, so a copy relabelled as a constructed OCTET STRING is read instead.
+        byte[] relabelled = [0x24, .. encoded[1..]];
+        return AsnDecoder.ReadOctetString(relabelled, AsnEncodingRules.BER, out _);
     }
 
     private static List<OracleNode> ReadAll(ReadOnlySpan<byte> content, AsnEncodingRules rules)
