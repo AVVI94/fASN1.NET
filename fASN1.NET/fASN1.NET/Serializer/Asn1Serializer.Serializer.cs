@@ -15,46 +15,78 @@ public static partial class Asn1Serializer
     /// <returns>The byte array representation of the serialized ASN.1 tag.</returns>
     public static byte[] Serialize(ITag tag)
     {
-        var res = new List<byte>();
-        SerializeInternal(tag, res);
-        return [.. res];
-    }
-
-    private static void SerializeInternal(ITag tag, List<byte> res)
-    {
-        var res2 = new List<byte>();
-        res.Add((byte)tag.TagNumber);
-        var childCount = TagBase.GetChildCount(tag);
-        if (childCount > 0)
+        // The encoding is the pre-order sequence of every element's header followed, for leaves, by its content.
+        // Pass 1 lists the elements in pre-order; pass 2 sizes them bottom-up (children follow their parent in the
+        // list, so walking it backwards sizes every child before its parent); pass 3 writes front to back.
+        // No pass recurses, so the depth of the tree is limited only by memory.
+        var elements = new List<ITag>();
+        var parents = new List<int>();
+        var pending = new Stack<(ITag Tag, int Parent)>();
+        pending.Push((tag, -1));
+        while (pending.Count > 0)
         {
-            for (int i = 0; i < childCount; i++)
+            var (current, parent) = pending.Pop();
+            var index = elements.Count;
+            elements.Add(current);
+            parents.Add(parent);
+            for (int i = TagBase.GetChildCount(current) - 1; i >= 0; i--)
             {
-                SerializeInternal(TagBase.GetChild(tag, i), res2);
+                pending.Push((TagBase.GetChild(current, i), index));
             }
         }
-        else
+
+        var contentLengths = new int[elements.Count];
+        for (int i = elements.Count - 1; i >= 0; i--)
         {
-            res2.AddRange(tag.Content);
+            if (TagBase.GetChildCount(elements[i]) == 0)
+            {
+                contentLengths[i] = elements[i].Content.Length;
+            }
+            if (parents[i] >= 0)
+            {
+                contentLengths[parents[i]] = checked(contentLengths[parents[i]] + EncodedSize(contentLengths[i]));
+            }
         }
-        res.AddRange(EncodeLength(res2.Count));
-        res.AddRange(res2);
+
+        var result = new byte[EncodedSize(contentLengths[0])];
+        var position = 0;
+        for (int i = 0; i < elements.Count; i++)
+        {
+            result[position++] = (byte)elements[i].TagNumber;
+            position += WriteLength(contentLengths[i], result, position);
+            if (TagBase.GetChildCount(elements[i]) == 0)
+            {
+                var content = elements[i].Content;
+                content.CopyTo(result, position);
+                position += content.Length;
+            }
+        }
+        return result;
     }
 
-    static byte[] EncodeLength(int length)
+    private static int EncodedSize(int contentLength) => checked(1 + LengthSize(contentLength) + contentLength);
+
+    private static int LengthSize(int length) => length < 0x80 ? 1 : 1 + LengthOctetCount(length);
+
+    private static int LengthOctetCount(int length) => length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
+
+    private static int WriteLength(int length, byte[] destination, int offset)
     {
         if (length < 0x80)
-            return [(byte)length];
+        {
+            destination[offset] = (byte)length;
+            return 1;
+        }
 
         // Long form: 0x80 | number of length octets, then the length big-endian with no leading zeros.
-        var octets = length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
-        var res = new byte[octets + 1];
-        res[0] = (byte)(0x80 | octets);
+        var octets = LengthOctetCount(length);
+        destination[offset] = (byte)(0x80 | octets);
         for (int i = octets; i > 0; i--)
         {
-            res[i] = (byte)length;
+            destination[offset + i] = (byte)length;
             length >>= 8;
         }
-        return res;
+        return octets + 1;
     }
     #endregion
 
@@ -98,11 +130,28 @@ public static partial class Asn1Serializer
             .Replace("%TagContent%", "{3}");
 
         var lastObjectIdentifier = "";
-        TagToStringInternal(tag, sb, options, 0, format, new IndentationCache(options.IndentationString), ref lastObjectIdentifier);
+        var cache = new IndentationCache(options.IndentationString);
+        // Pre-order walk with an explicit stack: elements come out in the order a recursive walk would give, so an
+        // OBJECT IDENTIFIER still names the elements after it, but a deep tree cannot overflow the call stack.
+        var pending = new Stack<(ITag Tag, int Level)>();
+        pending.Push((tag, 0));
+        while (pending.Count > 0)
+        {
+            var (current, level) = pending.Pop();
+            if (level > 0)
+            {
+                sb.AppendLine();
+            }
+            AppendTag(current, sb, options, level, format, cache, ref lastObjectIdentifier);
+            for (int i = TagBase.GetChildCount(current) - 1; i >= 0; i--)
+            {
+                pending.Push((TagBase.GetChild(current, i), level + 1));
+            }
+        }
         return sb.ToString();
     }
 
-    private static void TagToStringInternal(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
+    private static void AppendTag(ITag tag,StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
     {
         var indent = cache[level];
         var strategyLocator = options.ContentParsingStrategyLocator;
@@ -122,16 +171,6 @@ public static partial class Asn1Serializer
         if (tag.TagNumber == (int)Tag.ObjectIdentifier)
         {
             lastObjectIdentifier = Oid.OidEncoder.GetString(tag.Content);
-        }
-
-        var childCount = TagBase.GetChildCount(tag);
-        if (childCount > 0)
-        {
-            for (int i = 0; i < childCount; i++)
-            {
-                sb.AppendLine();
-                TagToStringInternal(TagBase.GetChild(tag, i), sb, options, level + 1, format, cache, ref lastObjectIdentifier);
-            }
         }
     }
 

@@ -189,22 +189,26 @@ public static partial class Extensions
             return false;
         }
 
-        static bool FindKeyUsage(ITag tag, ref KeyUsage keyUsage)
+        // Depth-first, pre-order: the first key usage extension in document order wins. An explicit stack keeps
+        // deep trees from overflowing the call stack.
+        static bool FindKeyUsage(ITag root, ref KeyUsage keyUsage)
         {
-#if DEBUG
-            var tagString = Asn1Serializer.TagToString(tag);
-#endif
-            if (tag.IsKeyUsageSequence())
+            var pending = new Stack<ITag>();
+            pending.Push(root);
+            while (pending.Count > 0)
             {
-                var ku = tag.GetKeyUsageBitStringTag();
-                keyUsage = KeyUsage.FromBitStringContent(ku.Content, tag.IsKeyUsageCritical());
-                return true;
-            }
-
-            foreach (var t in tag.Children)
-            {
-                if (FindKeyUsage(t, ref keyUsage))
+                var tag = pending.Pop();
+                if (tag.IsKeyUsageSequence())
+                {
+                    var ku = tag.GetKeyUsageBitStringTag();
+                    keyUsage = KeyUsage.FromBitStringContent(ku.Content, tag.IsKeyUsageCritical());
                     return true;
+                }
+
+                for (int i = tag.Children.Count - 1; i >= 0; i--)
+                {
+                    pending.Push(tag.Children[i]);
+                }
             }
             return false;
         }

@@ -203,35 +203,45 @@ internal static class InternalExtensions
          */
         if (tag.Children.Count == 0)
             return false;
-        try
+
+        // Pre-order walk with an explicit stack, so values come in document order and deep trees cannot overflow
+        // the call stack. SETs are matched, not entered; every other element is searched, the root always.
+        var pending = new Stack<ITag>();
+        if (IsMatchingSet(tag, oid))
         {
-            if (IsValidSet(tag, oid))
+            items.Add(GetSetValue(tag));
+        }
+        PushChildren(pending, tag);
+        while (pending.Count > 0)
+        {
+            var t = pending.Pop();
+            if (IsSET(t))
             {
-                items.Add(GetSetValue(tag));
-            }
-            foreach (var t in tag.Children)
-            {
-                bool isSet = IsSET(t);
-                if (!isSet && t.Children.Count > 0 && TryGetSubjectItem(t, oid, out var items2))
-                {
-                    items.AddRange(items2);
-                    continue;
-                }
-                if (IsValidSet(t, oid))
+                if (IsMatchingSet(t, oid))
                 {
                     items.Add(GetSetValue(t));
                 }
             }
-            return items.Count > 0;
+            else
+            {
+                PushChildren(pending, t);
+            }
         }
-        catch
+        return items.Count > 0;
+
+        static void PushChildren(Stack<ITag> pending, ITag t)
         {
-            return false;
+            for (int i = t.Children.Count - 1; i >= 0; i--)
+            {
+                pending.Push(t.Children[i]);
+            }
         }
-        static bool IsValidSet(ITag t, byte[] oid)
+
+        static bool IsMatchingSet(ITag t, byte[] oid)
             => IsSET(t)
                && t.Children.Count == 1
-               && t.Children[0].TagNumber == (int)Tag.Sequence
-               && t.Children[0].Children[0].Content.SequenceEqual(oid);
+               && t.Children[0] is { TagNumber: (int)Tag.Sequence, Children.Count: >= 2 } attribute
+               && attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier
+               && attribute.Children[0].Content.SequenceEqual(oid);
     }
 }

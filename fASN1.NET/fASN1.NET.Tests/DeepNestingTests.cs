@@ -77,6 +77,64 @@ public class DeepNestingTests
         Assert.Equal("68656C6C6F", Convert.ToHexString(leaf.Content));
     }
 
+    [Theory]
+    [InlineData(0x30)]
+    [InlineData(0x04)]
+    public void DeepTree_SerializesBackToTheSameBytes(byte identifier)
+    {
+        var data = BuildDefinite(DEPTH, identifier, [0x02, 0x01, 0x05]);
+        var tag = Asn1Serializer.Deserialize(data);
+
+        Assert.Equal(data, Asn1Serializer.Serialize(tag));
+    }
+
+    [Fact]
+    public void DeepTree_ConvertsToText()
+    {
+        var tag = Asn1Serializer.Deserialize(BuildDefinite(DEPTH, 0x30, [0x02, 0x01, 0x05]));
+
+        // No indentation: indented text grows with the square of the depth.
+        var lines = Asn1Serializer.TagToString(tag, o => o.IndentationString = "").Split(Environment.NewLine);
+
+        Assert.Equal(DEPTH + 1, lines.Length);
+        Assert.All(lines.Take(DEPTH), line => Assert.Equal("Sequence", line));
+        Assert.Contains("5", lines[DEPTH]);
+    }
+
+    [Fact]
+    public void DeepTree_FindsKeyUsageAtTheBottom()
+    {
+        // SEQUENCE { OID keyUsage, OCTET STRING { BIT STRING digitalSignature | keyEncipherment } }
+        var tag = Asn1Serializer.Deserialize(BuildDefinite(DEPTH, 0x30, Convert.FromHexString("300B0603551D0F0404030205A0")));
+
+        Assert.True(tag.TryGetKeyUsage(out var keyUsage));
+        Assert.Equal([true, false, true, false, false, false, false, false], keyUsage.KeyUsages);
+        Assert.False(keyUsage.DecipherOnly);
+        Assert.False(keyUsage.Critical);
+    }
+
+    [Fact]
+    public void DeepSubject_FindsTheSubjectItemAtTheBottom()
+    {
+        // SET { SEQUENCE { OID commonName, UTF8String "deep" } } under DEPTH SEQUENCEs, as the subject of a request.
+        var subject = BuildDefinite(DEPTH, 0x30, Convert.FromHexString("310D300B06035504030C0464656570"));
+        var algorithm = Convert.FromHexString("300D06092A864886F70D0101010500");
+        var request = Wrap(0x30,
+            Wrap(0x30, [0x02, 0x01, 0x00], subject, Wrap(0x30, algorithm, [0x03, 0x01, 0x00]), [0xA0, 0x00]),
+            algorithm,
+            [0x03, 0x01, 0x00]);
+        var tag = Asn1Serializer.Deserialize(request);
+
+        Assert.True(tag.TryGetCertificateRequestSubjectItem(SubjectItemKind.CommonName, out var items));
+        Assert.Equal(["deep"], items);
+    }
+
+    private static byte[] Wrap(byte identifier, params byte[][] parts)
+    {
+        var content = parts.SelectMany(p => p).ToArray();
+        return [identifier, .. ParsedStructureTests.EncodeLength(content.Length), .. content];
+    }
+
     /// <summary>
     /// Wraps <paramref name="innermost"/> in <paramref name="depth"/> definite-length elements.
     /// </summary>
