@@ -133,6 +133,22 @@ public class ParsedStructureTests
     }
 
     [Theory]
+    [InlineData("02", "Unexpected end of data in the length of the element at offset 0")]
+    [InlineData("30 82", "Unexpected end of data in the length of the element at offset 0")]
+    [InlineData("30 03 02 82 01", "Unexpected end of data in the length of the element at offset 2")]
+    [InlineData("30 04 02 82 01 00", "Content size is not correct for tag Integer at offset 6")]
+    [InlineData("02 87 00 00 00 00 00 00 01 05", "Length of the element at offset 0 uses 7 octets; at most 6 are supported")]
+    [InlineData("02 FF 01", "Length of the element at offset 0 uses 127 octets; at most 6 are supported")]
+    [InlineData("04 85 01 00 00 00 00", "Length of the element at offset 0 is too large")]
+    [InlineData("04 84 80 00 00 00", "Length of the element at offset 0 is too large")]
+    [InlineData("04 84 7F FF FF FF 00", "Content size is not correct for tag OctetString at offset 6")]
+    [InlineData("30 03 04 85 01 00 00 00 00", "Length of the element at offset 2 is too large")]
+    public void InvalidLength_FailsWithMessage(string hex, string message)
+    {
+        AssertFails(hex, message);
+    }
+
+    [Theory]
     [InlineData(127)]
     [InlineData(128)]
     [InlineData(255)]

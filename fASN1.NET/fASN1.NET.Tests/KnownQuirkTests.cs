@@ -22,12 +22,6 @@ public class KnownQuirkTests
     }
 
     [Fact]
-    public void FiveByteLength_OverflowsToZero()
-    {
-        Octets("").AssertMatches(Parse("04 85 01 00 00 00 00"));
-    }
-
-    [Fact]
     public void ApplicationPrivateUnknown_TagNumberIsZero()
     {
         Assert.Equal(0, Parse("41 01 07").TagNumber);
@@ -55,23 +49,6 @@ public class KnownQuirkTests
         var primitive = H("0B 02 41 42");
         Contract.Check(primitive);
         Assert.False(Asn1Serializer.TryDeserialize(primitive, out _, out _));
-    }
-
-    [Theory]
-    [InlineData("02")]                // EOF where the length should be
-    [InlineData("30 82")]             // EOF inside a long-form length
-    [InlineData("02 87 00 00 00 00 00 00 01 05")] // more than 6 length octets
-    public void SomeFailures_HaveNoErrorMessage(string hex)
-    {
-        var data = H(hex);
-        Contract.Check(data);
-
-        Assert.False(Asn1Serializer.TryDeserialize(data, out var tag, out var error));
-        Assert.Null(tag);
-        Assert.Null(error); // violates [NotNullWhen(false)] on the error parameter
-
-        var ex = Assert.Throws<Asn1DeserializationException>(() => Asn1Serializer.Deserialize(data));
-        Assert.Equal("Unknown deserialization error", ex.Message);
     }
 
     [Fact]

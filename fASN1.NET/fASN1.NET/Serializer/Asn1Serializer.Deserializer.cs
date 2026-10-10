@@ -331,7 +331,7 @@ public static partial class Asn1Serializer
             }
             return Step.Completed;
         }
-        long? length = DecodeLength(stream, out var valid);
+        long? length = DecodeLength(stream, elementStart, ref error, out var valid);
         if (!valid)
         {
             return Step.Completed;
@@ -435,35 +435,57 @@ public static partial class Asn1Serializer
         return tag;
     }
 
-    static int? DecodeLength(Stream data, out bool valid)
+    /// <summary>
+    /// Reads the length octets of the element whose identifier is at <paramref name="elementStart"/>.
+    /// Returns <see langword="null"/> with <paramref name="valid"/> set for indefinite length; on failure
+    /// <paramref name="valid"/> is <see langword="false"/> and <paramref name="error"/> says why.
+    /// </summary>
+    static long? DecodeLength(Stream data, long elementStart, ref string? error, out bool valid)
     {
+        valid = false;
+        var first = data.ReadByte();
+        if (first == -1)
+        {
+            error = $"Unexpected end of data in the length of the element at offset {elementStart}";
+            return null;
+        }
+        if (first < 0x80)
+        {
+            valid = true;
+            return first;
+        }
+        var octets = first & 0x7F;
+        if (octets == 0)
+        {
+            valid = true;
+            return null;
+        }
+        if (octets > 6)
+        {
+            error = $"Length of the element at offset {elementStart} uses {octets} octets; at most 6 are supported";
+            return null;
+        }
+
+        long value = 0;
+        for (int i = 0; i < octets; i++)
+        {
+            var b = data.ReadByte();
+            if (b == -1)
+            {
+                error = $"Unexpected end of data in the length of the element at offset {elementStart}";
+                return null;
+            }
+            value = (value << 8) | (uint)b;
+        }
+
+        // Content is read into a byte[], so lengths are limited to what an array can index.
+        if (value > int.MaxValue)
+        {
+            error = $"Length of the element at offset {elementStart} is too large";
+            return null;
+        }
         valid = true;
-        var buf = (int)data.ReadByte();
-        var len = buf & 0x7f;
-
-        if (len == buf)
-            return len;
-        if (len == 0)
-            return null;
-        if (len > 6)
-        {
-            valid = false;
-            return null; // Length over 48 bits not supported
-        }
-
-        buf = 0;
-        for (int y = 0; y < len; y++)
-        {
-            buf = (buf * 256) + data.ReadByte();
-        }
-
-        if(buf < 0)
-        {
-            valid = false;
-            return null;
-        }
-
-        return buf;
+        return value;
     }
     #endregion
 }
