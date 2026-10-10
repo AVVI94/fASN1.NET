@@ -241,13 +241,13 @@ public static partial class Asn1Serializer
                 //throw new InvalidDataException($"Cannot skip over an invalid tag with indefinite length at offset {start}");
             }
             //var position = stream.Position;
-            var content = new byte[length.Value];
             if (length.Value > stream.Length - stream.Position)
             {
                 error = $"Content size is not correct for tag {tag.TagName} at offset {start}";
                 return null;
                 //throw new InvalidDataException($"Content size is not correct for tag {tag.TagName} at offset {start}");
             }
+            var content = new byte[length.Value];
             _ = stream.Read(content, 0, (int)length.Value);
             tag.Content = content;
         }
