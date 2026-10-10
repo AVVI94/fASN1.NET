@@ -22,18 +22,6 @@ public class KnownQuirkTests
     }
 
     [Fact]
-    public void EmptyIndefiniteContainer_ReadsFollowingBytesAsContent()
-    {
-        // GetChildren returns the consumed length (the EOC itself) through ref,
-        // and the empty container then reads that many bytes after the EOC.
-        var tag = Parse("30 80 00 00 02 01 07");
-
-        Assert.IsType<Sequence>(tag);
-        Assert.Empty(tag.Children);
-        Assert.Equal(H("0201"), tag.Content);
-    }
-
-    [Fact]
     public void InvalidChildInsideIndefiniteContainer_IsDroppedSilently()
     {
         // The second INTEGER claims 5 bytes; the indefinite loop treats the failure like EOC.
@@ -73,8 +61,10 @@ public class KnownQuirkTests
         var data = H("30 80 24 80 04 01 41 00 00 02 01 05 00 00");
         Contract.Check(data);
 
-        Assert.False(Asn1Serializer.TryDeserialize(data, out _, out var error));
-        Assert.Equal("Content size is not correct for tag Sequence at offset 2", error);
+        // The Unknown child reports IsEoc, so the SEQUENCE ends at it and every following tag is dropped.
+        Assert.True(Asn1Serializer.TryDeserialize(data, out var tag, out _));
+        Assert.IsType<Sequence>(tag);
+        Assert.Empty(tag.Children);
     }
 
     [Fact]

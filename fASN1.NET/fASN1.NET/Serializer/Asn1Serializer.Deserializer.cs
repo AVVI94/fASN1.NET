@@ -205,11 +205,8 @@ public static partial class Asn1Serializer
         /// </summary>
         public bool IsIndefinite { get; } = length is null;
 
-        /// <summary>
-        /// Declared content length. For an indefinite-length frame it is set, once the children are read,
-        /// to the number of bytes consumed from <see cref="Start"/>, including the EOC.
-        /// </summary>
-        public long? Length { get; set; } = length;
+        /// <summary>Declared content length; <see langword="null"/> for indefinite length.</summary>
+        public long? Length { get; } = length;
 
         /// <summary>Offset where definite-length children must end.</summary>
         public long End => Start + Length!.Value;
@@ -243,7 +240,6 @@ public static partial class Asn1Serializer
                     if (completed is null or { IsEoc: true })
                     {
                         // EOC ends the children. So does a failed child, which is dropped without an error.
-                        parent.Length = stream.Position - parent.Start;
                         var ended = frames.Pop();
                         completed = EndFrame(stream, ref error, in ended, success: true);
                         needElement = false;
@@ -336,7 +332,7 @@ public static partial class Asn1Serializer
 
         // An OCTET STRING may wrap DER (X.509 extension values do), so its content is tried as nested elements.
         // A BIT STRING is always a leaf: signatures and keys would otherwise be expanded by accident.
-        if (tag.IsUniversal && tag.TagNumber == (int)Tag.OctetString)
+        if (length is not null && tag.IsUniversal && tag.TagNumber == (int)Tag.OctetString)
         {
             return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Probe, tag, start, length), out completed);
         }
@@ -369,7 +365,10 @@ public static partial class Asn1Serializer
     {
         if (frame.Kind == FrameKind.Container)
         {
-            return success ? FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length) : null;
+            if (!success)
+                return null;
+            // An indefinite-length container has no content of its own, even when it has no children.
+            return frame.IsIndefinite ? frame.Tag : FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
         }
 
         if (!success || HasEocChild(frame.Tag))

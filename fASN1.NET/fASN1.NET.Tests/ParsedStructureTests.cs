@@ -240,9 +240,18 @@ public class ParsedStructureTests
     }
 
     [Fact]
-    public void Indefinite_OctetString_IsProbedUntilEoc()
+    public void Indefinite_PrimitiveOctetString_Fails()
     {
-        AssertTree("04 80 02 01 05 00 00", OctetsWith(Int("05")));
+        // BER allows indefinite length only for constructed encodings.
+        AssertFails("04 80 02 01 05 00 00", "Cannot skip over an invalid tag with indefinite length");
+    }
+
+    [Fact]
+    public void Indefinite_EmptyContainer_HasNoContent()
+    {
+        AssertTree("30 80 00 00 02 01 07", Seq());
+        AssertTree("30 80 30 80 00 00 02 01 07 00 00", Seq(Seq(), Int("07")));
+        AssertTree("30 80 A0 80 00 00 00 00", Seq(new Expected(typeof(ContextSpecific_0), 0xA0, "[0]", 2, false, false, false, [], [])));
     }
 
     #endregion
