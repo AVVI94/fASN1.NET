@@ -35,7 +35,7 @@ public class ParsedStructureTests
     #region Tag identity
 
     public static IEnumerable<object[]> PrimitiveUniversalIdentifiers =>
-        TagIdentity.KnownUniversalIdentifiers.Where(id => id is not (0x30 or 0x31 or 0x0B)).Select(id => new object[] { id });
+        TagIdentity.KnownUniversalIdentifiers.Where(id => id is not (0x30 or 0x31 or 0x2B)).Select(id => new object[] { id });
 
     [Theory]
     [MemberData(nameof(PrimitiveUniversalIdentifiers))]
@@ -55,6 +55,7 @@ public class ParsedStructureTests
     [InlineData(0x10)] // primitive SEQUENCE is not valid; it is not mapped to Sequence
     [InlineData(0x11)]
     [InlineData(0x1D)] // CharacterString has no class
+    [InlineData(0x0B)] // EMBEDDED PDV is always constructed (0x2B); the primitive form is not a valid encoding
     public void UnassignedUniversal_IsUnknownLeaf(int identifier)
     {
         var tag = Parse([(byte)identifier, 0x01, 0x7F]);
@@ -86,6 +87,14 @@ public class ParsedStructureTests
     {
         AssertTree($"{0xA0 | number:X2} 06 02 01 05 01 01 FF",
             CtxWith(0xA0 | number, Int("05"), Leaf<BooleanTag>(1, "Boolean", "FF")));
+    }
+
+    [Fact]
+    public void EmbeddedPdv_IsConstructedWithNumber43()
+    {
+        Assert.Equal(0x2B, new EmbeddedPdv().TagNumber);
+        AssertTree("2B 03 02 01 05", new Expected(typeof(EmbeddedPdv), 0x2B, "EmbeddedPDV", 0, true, true, false, [], [Int("05")]));
+        Assert.Equal(H("2B 03 02 01 05"), Asn1Serializer.Serialize(Parse("2B 03 02 01 05")));
     }
 
     [Fact]

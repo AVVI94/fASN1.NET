@@ -14,7 +14,7 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid BER
 /// elements (none of them EOC) is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
-/// <item>Only single-byte identifiers are supported, and primitive EMBEDDED PDV (0x0B) is excluded.</item>
+/// <item>Only single-byte identifiers are supported.</item>
 /// </list>
 /// </remarks>
 internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNode> Children)
@@ -25,8 +25,6 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
     {
         if ((src[0] & 0x1F) == 0x1F)
             throw new AsnContentException("Multi-byte identifiers are outside the supported subset");
-        if (src[0] == 0x0B)
-            throw new AsnContentException("Primitive EMBEDDED PDV is outside the supported subset: the EmbeddedPdv class is always constructed");
         AsnDecoder.ReadEncodedValue(src, AsnEncodingRules.BER, out var contentOffset, out var contentLength, out consumed);
         var identifier = src[0];
         var content = src.Slice(contentOffset, contentLength);
@@ -114,7 +112,6 @@ internal static class TagIdentity
         [0x08] = (typeof(External), "External", 8),
         [0x09] = (typeof(Real), "Real", 9),
         [0x0A] = (typeof(Enumerated), "Enumerated", 10),
-        [0x0B] = (typeof(EmbeddedPdv), "EmbeddedPDV", 10), // current behavior: should be 11, see KnownQuirkTests
         [0x0C] = (typeof(Utf8String), "UTF8String", 12),
         [0x12] = (typeof(NumericString), "NumericString", 18),
         [0x13] = (typeof(PrintableString), "PrintableString", 19),
@@ -130,6 +127,7 @@ internal static class TagIdentity
         [0x1E] = (typeof(BMPString), "BMPString", 30),
         [0x30] = (typeof(Sequence), "Sequence", 48),
         [0x31] = (typeof(Tags.Set), "Set", 49),
+        [0x2B] = (typeof(EmbeddedPdv), "EmbeddedPDV", 43),
     };
 
     public static IEnumerable<int> KnownUniversalIdentifiers => Universal.Keys;

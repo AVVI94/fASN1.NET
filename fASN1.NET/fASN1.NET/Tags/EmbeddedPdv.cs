@@ -10,7 +10,7 @@ public class EmbeddedPdv : ITag
         Content = [];
         Children = children ?? new List<ITag>();
     }
-    public int TagNumber { get; } = 10;
+    public int TagNumber { get; } = 0x2B; // universal 11, always constructed (like Sequence = 0x30)
     public string TagName { get; } = Tag.EmbeddedPDV.ToString2();
     public int TagClass { get; } = 0;
     public bool IsConstructed => true;

@@ -13,7 +13,7 @@ public enum Tag
     External = 0x08,
     Real = 0x09,
     Enumerated = 0x0A,
-    EmbeddedPDV = 0x0B,
+    EmbeddedPDV = 0x2B, // universal 11 with the constructed bit, like Sequence and Set
     UTF8String = 0x0C,
     Sequence = 0x30,
     Set = 0x31,
