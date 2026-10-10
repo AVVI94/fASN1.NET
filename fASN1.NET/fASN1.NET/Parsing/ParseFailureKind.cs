@@ -17,4 +17,5 @@ internal enum ParseFailureKind
     TooManyLengthOctets,
     LengthTooLarge,
     NonDerLengthInOctetString,
+    SetNotInDerOrderInOctetString,
 }

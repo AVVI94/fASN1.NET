@@ -17,6 +17,9 @@ internal static class Ber
     /// <summary>Identifier of the end-of-contents marker that closes an indefinite-length element.</summary>
     public const int END_OF_CONTENTS = 0x00;
 
+    /// <summary>Identifier of a SET or SET OF (universal 17, constructed).</summary>
+    public const int SET = 0x31;
+
     /// <summary>First length byte bit 8: the low seven bits give the number of length bytes that follow.</summary>
     public const int LONG_FORM_LENGTH_FLAG = 0x80;
 

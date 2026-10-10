@@ -11,7 +11,13 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// </summary>
 internal static class TreeAssert
 {
-    public static void Equal(ITag expected, ITag actual)
+    /// <param name="expected">The expected tree.</param>
+    /// <param name="actual">The actual tree.</param>
+    /// <param name="setsInDerOrder">
+    /// The actual tree went through Serialize, so the children of every SET of <paramref name="expected"/> are
+    /// expected in DER order (X.690 §11.6) rather than in their own order.
+    /// </param>
+    public static void Equal(ITag expected, ITag actual, bool setsInDerOrder = false)
     {
         var stack = new Stack<(ITag Expected, ITag Actual, string Path)>();
         stack.Push((expected, actual, "root"));
@@ -30,11 +36,30 @@ internal static class TreeAssert
                 throw Fail(path, nameof(ITag.Content), Convert.ToHexString(e.Content), Convert.ToHexString(a.Content));
             }
             Check(path, "Children.Count", e.Children.Count, a.Children.Count);
-            for (int i = e.Children.Count - 1; i >= 0; i--)
+            var expectedChildren = setsInDerOrder && e.TagNumber == (int)Tag.Set ? InDerOrder(e.Children) : e.Children;
+            for (int i = expectedChildren.Count - 1; i >= 0; i--)
             {
-                stack.Push((e.Children[i], a.Children[i], $"{path}/{i}"));
+                stack.Push((expectedChildren[i], a.Children[i], $"{path}/{i}"));
             }
         }
+    }
+
+    /// <summary>The children ordered as X.690 §11.6 orders SET OF components: by encoding, the shorter padded with zeros.</summary>
+    private static IList<ITag> InDerOrder(IList<ITag> children)
+        => children.Select(c => (Tag: c, Encoding: Asn1Serializer.Serialize(c)))
+                   .OrderBy(c => c.Encoding, Comparer<byte[]>.Create(ComparePadded))
+                   .Select(c => c.Tag)
+                   .ToList();
+
+    private static int ComparePadded(byte[] a, byte[] b)
+    {
+        for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
+        {
+            var difference = (i < a.Length ? a[i] : 0) - (i < b.Length ? b[i] : 0);
+            if (difference != 0)
+                return difference;
+        }
+        return 0;
     }
 
     /// <summary>

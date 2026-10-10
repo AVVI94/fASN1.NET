@@ -8,6 +8,9 @@ internal struct OpenElement
     /// <summary>Index of the element's <see cref="ScannedNode"/>.</summary>
     public int NodeIndex;
 
+    /// <summary>Offset of the identifier.</summary>
+    public long ElementStart;
+
     /// <summary>Offset of the first content byte.</summary>
     public long ContentStart;
 
@@ -30,6 +33,12 @@ internal struct OpenElement
     /// in any other form would re-encode to different bytes and change the OCTET STRING's value.
     /// </summary>
     public bool RequiresDerLengths;
+
+    /// <summary>
+    /// Extent of the last direct child read, for a SET that <see cref="RequiresDerLengths"/>: its children must be in
+    /// DER order too, or Serialize would reorder them and change the OCTET STRING's value.
+    /// </summary>
+    public long PreviousChildStart, PreviousChildEnd;
 
     /// <summary>Number of direct children read so far.</summary>
     public int ChildCount;

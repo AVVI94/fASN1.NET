@@ -12,7 +12,7 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// The oracle encodes these library decisions on top of plain BER:
 /// <list type="bullet">
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid elements with DER lengths
-/// (definite, minimal; none of them EOC) is shown with those elements as children; otherwise it is a leaf.</item>
+/// (definite, minimal; none of them EOC) and every SET in DER order is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
 /// <item>Only single-byte identifiers are supported.</item>
 /// </list>
@@ -28,6 +28,10 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
         AsnDecoder.ReadEncodedValue(src, rules, out var contentOffset, out var contentLength, out consumed);
         var identifier = src[0];
         var content = src.Slice(contentOffset, contentLength);
+
+        // Inside an OCTET STRING, a SET must also be in DER order (X.690 §11.6), which ReadSetOf checks.
+        if (rules == AsnEncodingRules.DER && identifier == 0x31)
+            new AsnReader(src.Slice(0, consumed).ToArray(), AsnEncodingRules.DER).ReadSetOf();
 
         if ((identifier & 0x20) != 0)
             return new OracleNode(identifier, [], ReadAll(content, rules));

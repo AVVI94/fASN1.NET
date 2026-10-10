@@ -33,6 +33,9 @@ internal ref struct StructureScanner<TSource>
     private PooledList<ScannedNode> _nodes;
     private ParseFailure _failure;
 
+    /// <summary>Offset of the identifier of the element that completed last.</summary>
+    private long _completedElementStart;
+
     /// <param name="source">The input, positioned at the element to scan. The scanner reads a copy.</param>
     /// <param name="traits">Traits of the tags the factory creates.</param>
     public StructureScanner(TSource source, TagTraitsTable traits)
@@ -42,6 +45,7 @@ internal ref struct StructureScanner<TSource>
         _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
         _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
         _failure = default;
+        _completedElementStart = 0;
     }
 
     /// <summary>The nodes of the final tree in pre-order, once <see cref="TryScan"/> has succeeded.</summary>
@@ -80,6 +84,11 @@ internal ref struct StructureScanner<TSource>
 
                 default:
                     // The element just completed is the next child of the innermost open element.
+                    if (!IsInDerSetOrder())
+                    {
+                        result = Fail(new ParseFailure(ParseFailureKind.SetNotInDerOrderInOctetString, _completedElementStart));
+                        break;
+                    }
                     _openElements.Last.ChildCount++;
                     result = InnermostElementExpectsAnotherChild() ? ScanNextElement() : CloseCompletedInnermostElement();
                     break;
@@ -157,11 +166,13 @@ internal ref struct StructureScanner<TSource>
             {
                 Kind = traits.IsConstructed ? OpenElementKind.Constructed : OpenElementKind.EncapsulationProbe,
                 NodeIndex = nodeIndex,
+                ElementStart = elementStart,
                 ContentStart = contentStart,
                 ContentLength = contentLength,
             });
         }
 
+        _completedElementStart = elementStart;
         return SkipContent(traits.TagName, contentStart, contentLength);
     }
 
@@ -209,6 +220,7 @@ internal ref struct StructureScanner<TSource>
     /// </summary>
     private ElementScanResult CloseElement(in OpenElement element, bool childrenSucceeded)
     {
+        _completedElementStart = element.ElementStart;
         ref var node = ref _nodes[element.NodeIndex];
         var keepsChildren = element.Kind == OpenElementKind.Constructed
             ? childrenSucceeded
@@ -286,6 +298,59 @@ internal ref struct StructureScanner<TSource>
 
         contentLength = length;
         return true;
+    }
+
+    /// <summary>
+    /// Checks the element that just completed against the previous child when the innermost open element is a SET
+    /// inside an encapsulation probe: Serialize writes SET children in DER order (X.690 §11.6), so children in any
+    /// other order would change the OCTET STRING's value.
+    /// </summary>
+    private bool IsInDerSetOrder()
+    {
+        ref var parent = ref _openElements.Last;
+        if (!parent.RequiresDerLengths || _nodes[parent.NodeIndex].Identifier != Ber.SET)
+            return true;
+
+        var end = _source.Position;
+        if (parent.ChildCount > 0
+            && CompareEncodings(parent.PreviousChildStart, parent.PreviousChildEnd, _completedElementStart, end) > 0)
+        {
+            return false;
+        }
+        parent.PreviousChildStart = _completedElementStart;
+        parent.PreviousChildEnd = end;
+        return true;
+    }
+
+    /// <summary>
+    /// Compares two encodings in the input as octet strings, the shorter one padded with zero bytes. Reads byte by
+    /// byte without allocating; the order is almost always settled by the first bytes.
+    /// </summary>
+    private int CompareEncodings(long aStart, long aEnd, long bStart, long bEnd)
+    {
+        var resume = _source.Position;
+        long aLength = aEnd - aStart, bLength = bEnd - bStart, common = Math.Min(aLength, bLength);
+        var result = 0;
+        for (long i = 0; i < common && result == 0; i++)
+        {
+            _source.Position = aStart + i;
+            var a = _source.ReadByte();
+            _source.Position = bStart + i;
+            result = a - _source.ReadByte();
+        }
+        if (result == 0 && aLength != bLength)
+        {
+            // The longer one is greater exactly when its remaining bytes are not all padding zeros.
+            var (longerStart, longerLength, sign) = aLength > bLength ? (aStart, aLength, 1) : (bStart, bLength, -1);
+            _source.Position = longerStart + common;
+            for (long i = common; i < longerLength && result == 0; i++)
+            {
+                if (_source.ReadByte() != 0)
+                    result = sign;
+            }
+        }
+        _source.Position = resume;
+        return result;
     }
 
     /// <summary>Offset that the element being scanned may not cross; see <see cref="OpenElement.Limit"/>.</summary>

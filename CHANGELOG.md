@@ -21,8 +21,8 @@ unsupported by design: only version 3 can carry extensions.
 ### Breaking changes
 
 Parsing:
-- An OCTET STRING is read as encapsulated children only when every length inside it is in DER form; otherwise it
-  stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
+- An OCTET STRING is read as encapsulated children only when every length inside it is in DER form and every SET
+  inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
 - Input that used to parse into a wrong tree now fails with an error: multi-byte tag numbers, an element crossing
   the end of its container, a missing end-of-contents marker, `00` with a non-zero length inside an
   indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`.
@@ -36,7 +36,7 @@ Writing:
 - `Serialize` throws `ArgumentException` for a tag number that does not fit one identifier byte and for an element
   that has both content and children (the content used to be dropped). An element with children gets the
   constructed bit, except a universal BIT STRING or OCTET STRING; a BIT STRING with children gets its leading
-  unused-bits byte. SET OF elements keep their order and are not sorted.
+  unused-bits byte. The children of every SET are written in DER order (X.690 §11.6).
 - `Integer(int/long/…/BigInteger)` writes DER two's complement (128 is `00 80`; it was `80`, which reads as -128).
 - `UTCTime(DateTime)` and `GeneralizedTime(DateTime)` write DER: UTC with `Z`, invariant culture, and for
   GeneralizedTime a fraction of a second only when there is one. `UTCTime` throws for years outside 1950–2049.

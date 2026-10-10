@@ -13,9 +13,11 @@ public static partial class Asn1Serializer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Lengths are written in DER form (definite, shortest). Children are written in the order they have; SET OF
-    /// elements are not sorted, so a tree parsed from DER serializes back to the same bytes and a tree built by
-    /// hand is DER only if its SETs are already in DER order.
+    /// Lengths are written in DER form (definite, shortest), and the children of every SET are written in DER order
+    /// (X.690 §11.6): ascending by their complete encodings, compared as octet strings with the shorter one padded
+    /// with zero bytes. Without a schema a SET cannot be told from a SET OF, so a SET with fixed fields is ordered the
+    /// same way; this matches the tag order of §10.3 unless two fields differ only in the constructed bit. A tree
+    /// parsed from DER serializes back to the same bytes.
     /// </para>
     /// <para>
     /// The identifier is <see cref="ITag.TagNumber"/>, which must fit one identifier byte. An element with
@@ -68,9 +70,11 @@ public static partial class Asn1Serializer
         }
 
         var result = new byte[EncodedSize(contentLengths[0])];
+        var starts = new int[elements.Count];
         var position = 0;
         for (int i = 0; i < elements.Count; i++)
         {
+            starts[i] = position;
             result[position++] = identifiers[i];
             position += WriteLength(contentLengths[i], result, position);
             if (TagBase.GetChildCount(elements[i]) == 0)
@@ -84,10 +88,83 @@ public static partial class Asn1Serializer
                 result[position++] = 0x00; // no unused bits: the children are whole bytes
             }
         }
+        SortSets(result, identifiers, parents, starts, contentLengths);
         return result;
     }
 
+    /// <summary>
+    /// Puts the children of every SET in <paramref name="encoding"/> in DER order by moving their encodings, which
+    /// lie side by side in the SET's content. Elements are in pre-order, so walking SETs from the last one handles
+    /// every SET inside another before the one containing it; reordering inside a child does not move the child.
+    /// </summary>
+    private static void SortSets(byte[] encoding, List<byte> identifiers, List<int> parents, int[] starts, List<int> contentLengths)
+    {
+        Dictionary<int, List<int>>? setChildren = null;
+        for (int i = 1; i < identifiers.Count; i++)
+        {
+            if (identifiers[parents[i]] != SET)
+                continue;
+            setChildren ??= [];
+            if (!setChildren.TryGetValue(parents[i], out var children))
+                setChildren[parents[i]] = children = [];
+            children.Add(i);
+        }
+        if (setChildren is null)
+            return;
+
+        var sets = new List<int>(setChildren.Keys);
+        sets.Sort((a, b) => b.CompareTo(a));
+        foreach (var set in sets)
+        {
+            var children = setChildren[set];
+            var ranges = new (int Start, int Length)[children.Count];
+            var isSorted = true;
+            for (int i = 0; i < children.Count; i++)
+            {
+                ranges[i] = (starts[children[i]], EncodedSize(contentLengths[children[i]]));
+                if (i > 0 && CompareEncodings(encoding, ranges[i - 1], ranges[i]) > 0)
+                    isSorted = false;
+            }
+            if (isSorted)
+                continue;
+
+            Array.Sort(ranges, (a, b) => CompareEncodings(encoding, a, b));
+            var sorted = new byte[contentLengths[set]];
+            var offset = 0;
+            foreach (var (start, length) in ranges)
+            {
+                Buffer.BlockCopy(encoding, start, sorted, offset, length);
+                offset += length;
+            }
+            Buffer.BlockCopy(sorted, 0, encoding, starts[children[0]], sorted.Length);
+        }
+    }
+
+    /// <summary>
+    /// Compares two encodings as X.690 §11.6 orders SET OF components: as octet strings, the shorter one padded at
+    /// its end with zero bytes.
+    /// </summary>
+    internal static int CompareEncodings(byte[] bytes, (int Start, int Length) a, (int Start, int Length) b)
+    {
+        var common = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < common; i++)
+        {
+            var difference = bytes[a.Start + i] - bytes[b.Start + i];
+            if (difference != 0)
+                return difference;
+        }
+        // The longer one is greater exactly when its remaining bytes are not all padding zeros.
+        var (longer, sign) = a.Length > b.Length ? (a, 1) : (b, -1);
+        for (int i = common; i < longer.Length; i++)
+        {
+            if (bytes[longer.Start + i] != 0)
+                return sign;
+        }
+        return 0;
+    }
+
     private const byte BIT_STRING = 0x03;
+    private const byte SET = 0x31;
     private const byte OCTET_STRING = 0x04;
     private const byte CONSTRUCTED_FLAG = 0x20;
     private const int TAG_NUMBER_MASK = 0x1F;

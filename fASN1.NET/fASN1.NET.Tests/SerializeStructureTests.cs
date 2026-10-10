@@ -157,11 +157,57 @@ public class SerializeStructureTests
     }
 
     [Fact]
-    public void SetOf_KeepsItsOrder()
+    public void Set_IsWrittenInDerOrder()
     {
-        // Not sorted into DER order, so parsed input serializes back unchanged.
         var parsed = Asn1Serializer.Deserialize(H("31 06 02 01 09 02 01 01"));
 
-        Assert.Equal(H("31 06 02 01 09 02 01 01"), Asn1Serializer.Serialize(parsed));
+        Assert.Equal(H("31 06 02 01 01 02 01 09"), Asn1Serializer.Serialize(parsed));
+    }
+
+    [Fact]
+    public void Set_MatchesDotNetSetOfOrder()
+    {
+        // Mixed tags and lengths, a nested SET out of order, and duplicates. AsnWriter sorts SET OF on encode.
+        ITag[] items =
+        [
+            new Utf8String("zz"u8.ToArray()),
+            new Integer(300),
+            new Set([new Integer(2), new Integer(1)]),
+            new Integer(5),
+            new OctetString([0x01]),
+            new Integer(5),
+            new Null(),
+        ];
+        var writer = new System.Formats.Asn1.AsnWriter(System.Formats.Asn1.AsnEncodingRules.DER);
+        using (writer.PushSetOf())
+        {
+            foreach (var item in items)
+                writer.WriteEncodedValue(Asn1Serializer.Serialize(item));
+        }
+
+        var serialized = Asn1Serializer.Serialize(new Set([.. items]));
+
+        Assert.Equal(Convert.ToHexString(writer.Encode()), Convert.ToHexString(serialized));
+        Assert.Contains("31060201010201 02".Replace(" ", ""), Convert.ToHexString(serialized)); // inner SET sorted too
+    }
+
+    [Fact]
+    public void OctetStringWithUnsortedSet_StaysRawAndKeepsItsBytes()
+    {
+        // Reading it as children would let Serialize reorder the SET and change the value.
+        var data = H("04 08 31 06 02 01 09 02 01 01");
+
+        var parsed = Asn1Serializer.Deserialize(data);
+
+        Assert.Empty(parsed.Children);
+        Assert.Equal(data, Asn1Serializer.Serialize(parsed));
+    }
+
+    [Fact]
+    public void OctetStringWithSortedSet_IsStillReadAsChildren()
+    {
+        var parsed = Asn1Serializer.Deserialize(H("04 08 31 06 02 01 01 02 01 09"));
+
+        Assert.Equal(2, Assert.IsType<Set>(Assert.Single(parsed.Children)).Children.Count);
     }
 }
