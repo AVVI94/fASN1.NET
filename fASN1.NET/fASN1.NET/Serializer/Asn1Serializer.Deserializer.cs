@@ -173,55 +173,294 @@ public static partial class Asn1Serializer
         return DeserializeInternal(stream, ref error, tagFactory) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
     }
 
+    // Parsing runs in two passes over the input:
+    //  1. Scan: read every identifier and length, validate the structure and settle each OCTET STRING
+    //     encapsulation probe, without creating any tag. The final tree is recorded as a flat pre-order
+    //     list of NodeRecords. A failed probe just truncates that list back to the probe itself.
+    //  2. Materialize: create exactly the recorded tags, each container's children list at its final
+    //     size, and read only the content that ends up in the tree.
+    // So nothing is allocated for structure that is later discarded, and invalid input allocates nothing
+    // but the error message.
+
+    /// <summary>Stateless, so one instance serves every call that does not pass its own factory.</summary>
+    private static readonly DefaultTagFactory DefaultFactory = new();
+
     /// <summary>
-    /// What a frame's children are being read for.
+    /// Per-thread working buffers, reused across calls. Taken out of the slot while in use, so a nested
+    /// parse (for example from a custom factory) gets its own.
     /// </summary>
+    [ThreadStatic]
+    private static ParseState? t_cachedState;
+
+    private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
+    {
+        var state = t_cachedState ?? new ParseState();
+        t_cachedState = null;
+        var failure = default(ParseError);
+        try
+        {
+            var traits = state.TraitsFor(tagFactory);
+            if (!Scan(stream, ref failure, traits, state))
+            {
+                error = failure.Format();
+                return null;
+            }
+            var end = stream.Position;
+            var root = Materialize(stream, ref failure, tagFactory, state);
+            if (root is null)
+            {
+                error = failure.Format();
+                return null;
+            }
+            stream.Position = end;
+            return root;
+        }
+        finally
+        {
+            if (state.Reset())
+                t_cachedState = state;
+        }
+    }
+
+    #region Errors
+
+    private enum ErrorKind
+    {
+        None,
+        UnexpectedEnd,
+        MissingEndOfContents,
+        MultiByteTag,
+        InvalidEndOfContents,
+        ContainerPastEnd,
+        ContainerSizeMismatch,
+        IndefinitePrimitive,
+        ContentPastEnd,
+        ContentReadShort,
+        LengthTruncated,
+        TooManyLengthOctets,
+        LengthTooLarge,
+    }
+
+    /// <summary>
+    /// A parse failure, kept as data and formatted only if the whole parse fails. Failed encapsulation
+    /// probes record failures too, and most parses that see them still succeed.
+    /// </summary>
+    private readonly struct ParseError(ErrorKind kind, long offset, long value = 0, string? name = null)
+    {
+        public string? Format() => kind switch
+        {
+            ErrorKind.None => null,
+            ErrorKind.UnexpectedEnd => $"Unexpected end of data at offset {offset}",
+            ErrorKind.MissingEndOfContents => $"Indefinite-length container at offset {offset} has no end-of-contents marker",
+            ErrorKind.MultiByteTag => $"Element at offset {offset} uses a multi-byte tag number, which is not supported",
+            ErrorKind.InvalidEndOfContents => $"Invalid end-of-contents marker at offset {offset}",
+            ErrorKind.ContainerPastEnd => $"Container at offset {offset} has a length of {value}, which is past the end of the stream",
+            ErrorKind.ContainerSizeMismatch => $"Content size is not correct for container at offset {offset}",
+            ErrorKind.IndefinitePrimitive => "Cannot skip over an invalid tag with indefinite length",
+            ErrorKind.ContentPastEnd => $"Content size is not correct for tag {name} at offset {offset}",
+            ErrorKind.ContentReadShort => $"Unexpected end of data in the content of tag {name} at offset {offset}",
+            ErrorKind.LengthTruncated => $"Unexpected end of data in the length of the element at offset {offset}",
+            ErrorKind.TooManyLengthOctets => $"Length of the element at offset {offset} uses {value} octets; at most 6 are supported",
+            ErrorKind.LengthTooLarge => $"Length of the element at offset {offset} is too large",
+            _ => $"Invalid data at offset {offset}",
+        };
+    }
+
+    #endregion
+
+    #region Tag traits
+
+    /// <summary>What the scan needs to know about the tag a factory creates for an identifier.</summary>
+    private readonly struct TagTraits(bool constructed, bool probe, string name)
+    {
+        /// <summary>The content is read as nested elements.</summary>
+        public bool Constructed { get; } = constructed;
+
+        /// <summary>A primitive universal OCTET STRING: its content is tried as nested elements.</summary>
+        public bool Probe { get; } = probe;
+
+        /// <summary>Tag name, used in error messages.</summary>
+        public string Name { get; } = name;
+
+        public bool IsKnown => Name is not null;
+
+        public static TagTraits Of(ITag freshTag, int identifier)
+        {
+            var constructed = freshTag.IsConstructed || (identifier & 0x20) != 0;
+            // A BIT STRING is always a leaf: signatures and keys would otherwise be expanded by accident.
+            var probe = !constructed && freshTag.IsUniversal && freshTag.TagNumber == (int)Tag.OctetString;
+            return new TagTraits(constructed, probe, freshTag.TagName);
+        }
+    }
+
+    /// <summary>
+    /// Traits per identifier for one factory. Each identifier is asked of the factory once, by creating a
+    /// tag; the decisions depend only on a freshly created tag, as they always have.
+    /// </summary>
+    private sealed class TraitsTable(ITagFactory factory)
+    {
+        private readonly TagTraits[] _traits = new TagTraits[256];
+
+        public ITagFactory Factory { get; } = factory;
+
+        public TagTraits this[int identifier]
+        {
+            get
+            {
+                ref var traits = ref _traits[identifier];
+                if (!traits.IsKnown)
+                    traits = TagTraits.Of(Factory.Create(identifier), identifier);
+                return traits;
+            }
+        }
+
+        /// <summary>The default factory's table, filled once for every identifier so it can be shared by all threads.</summary>
+        public static TraitsTable CreateComplete(ITagFactory factory)
+        {
+            var table = new TraitsTable(factory);
+            for (int i = 0; i < 256; i++)
+                _ = table[i];
+            return table;
+        }
+    }
+
+    private static readonly TraitsTable DefaultTraits = TraitsTable.CreateComplete(DefaultFactory);
+
+    #endregion
+
+    #region Working state
+
+    /// <summary>One node of the final tree, in pre-order, as found by the scan.</summary>
+    private struct NodeRecord
+    {
+        public int Identifier;
+
+        /// <summary>Stream offset of the first content byte.</summary>
+        public long Start;
+
+        /// <summary>Content length of a leaf.</summary>
+        public long Length;
+
+        /// <summary>Children were read; the next <see cref="ChildCount"/> subtrees in pre-order are them.</summary>
+        public bool IsContainer;
+
+        public bool IsIndefinite;
+
+        public int ChildCount;
+
+        /// <summary>A probe that did not hold nested elements: a leaf whose content is the raw bytes.</summary>
+        public bool RolledBack;
+    }
+
+    /// <summary>What a frame's children are being read for.</summary>
     private enum FrameKind
     {
         /// <summary>A constructed element; a failure in its children fails the element.</summary>
         Container,
 
-        /// <summary>
-        /// A primitive OCTET STRING whose content is tried as nested elements.
-        /// A failure rolls the element back to a plain leaf.
-        /// </summary>
+        /// <summary>A primitive OCTET STRING whose content is tried as nested elements; a failure rolls it back to a leaf.</summary>
         Probe,
     }
 
-    /// <summary>
-    /// An element whose children are being read. A struct, so opening a frame does not allocate.
-    /// </summary>
-    private struct ContainerFrame(FrameKind kind, ITag tag, long start, long? length)
+    /// <summary>An element whose children are being scanned.</summary>
+    private struct ContainerFrame
     {
-        public FrameKind Kind { get; } = kind;
+        public FrameKind Kind;
 
-        public ITag Tag { get; } = tag;
+        /// <summary>This element's entry in the record list.</summary>
+        public int Record;
 
         /// <summary>Stream offset of the first content byte.</summary>
-        public long Start { get; } = start;
-
-        /// <summary>Children are read until an end-of-contents marker instead of up to <see cref="End"/>.</summary>
-        public bool IsIndefinite { get; } = length is null;
+        public long Start;
 
         /// <summary>Declared content length; <see langword="null"/> for indefinite length.</summary>
-        public long? Length { get; } = length;
+        public long? Length;
+
+        public readonly bool IsIndefinite => Length is null;
 
         /// <summary>Offset where definite-length children must end.</summary>
-        public long End => Start + Length!.Value;
+        public readonly long End => Start + Length!.Value;
+
+        /// <summary>Number of direct children scanned so far.</summary>
+        public int ChildCount;
 
         /// <summary>A probe saw an EOC among its direct children, so its content is not a run of elements.</summary>
-        public bool ContainsEoc { get; set; }
+        public bool ContainsEoc;
 
-        /// <summary>Index of this frame's first child in the pending-children buffer of <see cref="FrameStack"/>.</summary>
-        public int FirstChild { get; set; }
+        /// <summary>Tag name, for the error message if a rolled-back probe's content is missing.</summary>
+        public string Name;
+    }
+
+    /// <summary>Entry of the materialize pass's parent stack.</summary>
+    private struct OpenParent
+    {
+        public IList<ITag> Children;
+        public int Remaining;
     }
 
     /// <summary>
-    /// What <see cref="BeginElement"/> did with the next element.
+    /// Buffers of both passes. Array-backed, handing out entries by reference so structs are not copied.
+    /// </summary>
+    private sealed class ParseState
+    {
+        public ContainerFrame[] Frames = new ContainerFrame[16];
+        public int FrameCount;
+        public NodeRecord[] Records = new NodeRecord[64];
+        public int RecordCount;
+        public OpenParent[] Parents = new OpenParent[16];
+        private TraitsTable? _customTraits;
+
+        public ref ContainerFrame Top => ref Frames[FrameCount - 1];
+
+        public void Push(in ContainerFrame frame)
+        {
+            if (FrameCount == Frames.Length)
+                Array.Resize(ref Frames, Frames.Length * 2);
+            Frames[FrameCount++] = frame;
+        }
+
+        public ContainerFrame Pop() => Frames[--FrameCount];
+
+        public int AddRecord(in NodeRecord record)
+        {
+            if (RecordCount == Records.Length)
+                Array.Resize(ref Records, Records.Length * 2);
+            Records[RecordCount] = record;
+            return RecordCount++;
+        }
+
+        public TraitsTable TraitsFor(ITagFactory factory)
+        {
+            if (ReferenceEquals(factory, DefaultFactory))
+                return DefaultTraits;
+            if (_customTraits is null || !ReferenceEquals(_customTraits.Factory, factory))
+                _customTraits = new TraitsTable(factory);
+            return _customTraits;
+        }
+
+        /// <summary>
+        /// Clears the buffers after a parse, including one that ended in an exception, so they hold no tags.
+        /// Returns <see langword="false"/> when they grew too large to be worth keeping for the next parse.
+        /// </summary>
+        public bool Reset()
+        {
+            FrameCount = 0;
+            RecordCount = 0;
+            Array.Clear(Parents, 0, Parents.Length);
+            return Frames.Length <= 256 && Records.Length <= 16384 && Parents.Length <= 256;
+        }
+    }
+
+    #endregion
+
+    #region Pass 1: scan
+
+    /// <summary>
+    /// What <see cref="ScanElement"/> did with the next element.
     /// </summary>
     private enum Step
     {
-        /// <summary>The element was parsed completely (or failed).</summary>
+        /// <summary>The element was scanned completely; see the success flag.</summary>
         Completed,
 
         /// <summary>A frame was pushed; its children come next.</summary>
@@ -232,196 +471,75 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Parses one element and all of its descendants. Every element whose children are being read is a
-    /// <see cref="ContainerFrame"/> on an explicit stack, so nesting depth does not consume call stack space.
+    /// Scans one element and all of its descendants, recording the final tree. Every element whose
+    /// children are being read is a frame on an explicit stack, so nesting depth does not consume call stack space.
     /// </summary>
-    /// <summary>Stateless, so one instance serves every call that does not pass its own factory.</summary>
-    private static readonly DefaultTagFactory DefaultFactory = new();
-
-    /// <summary>
-    /// One frame stack per thread, reused across calls so a parse does not allocate its working buffers.
-    /// Taken out of the slot while in use, so a nested parse (for example from a custom factory) gets its own.
-    /// </summary>
-    [ThreadStatic]
-    private static FrameStack? t_cachedFrames;
-
-    private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
-    {
-        var frames = t_cachedFrames ?? new FrameStack();
-        t_cachedFrames = null;
-        try
-        {
-            return ParseLoop(stream, ref error, tagFactory, frames);
-        }
-        finally
-        {
-            if (frames.Reset())
-                t_cachedFrames = frames;
-        }
-    }
-
-    /// <summary>
-    /// The parse loop, kept free of exception handlers so the JIT can keep its locals in registers.
-    /// </summary>
-    private static ITag? ParseLoop(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames)
+    private static bool Scan(Stream stream, ref ParseError error, TraitsTable traits, ParseState state)
     {
         var needElement = true;
-        ITag? completed = null;
+        var ok = false;
         while (true)
         {
-            var step = needElement ? BeginElement(stream, ref error, tagFactory, frames, out completed) : Step.Completed;
+            var step = needElement ? ScanElement(stream, ref error, traits, state, out ok) : Step.Completed;
             if (step == Step.EndOfContents)
             {
-                var ended = frames.Pop();
-                completed = EndFrame(stream, ref error, frames, in ended, success: true);
+                ok = EndFrame(stream, ref error, state, state.Pop(), success: true);
                 needElement = false;
                 continue;
             }
             if (step == Step.Completed)
             {
-                // `completed` is a finished element, or null when it failed. Hand it to its parent.
-                if (frames.Count == 0)
-                {
-                    return completed;
-                }
-                if (completed is null)
+                if (state.FrameCount == 0)
+                    return ok;
+                if (!ok)
                 {
                     // A failed child ends the frame unsuccessfully.
-                    var failed = frames.Pop();
-                    completed = EndFrame(stream, ref error, frames, in failed, success: false);
+                    ok = EndFrame(stream, ref error, state, state.Pop(), success: false);
                     needElement = false;
                     continue;
                 }
-                frames.AddChild(completed);
+                state.Top.ChildCount++;
             }
 
-            ref var top = ref frames.Top;
+            ref var top = ref state.Top;
             if (top.IsIndefinite || stream.Position < top.End)
             {
                 needElement = true;
                 continue;
             }
 
-            var done = frames.Pop();
+            var done = state.Pop();
             needElement = false;
             var exact = stream.Position == done.End;
             if (!exact)
             {
-                error = $"Content size is not correct for container at offset {done.Start}";
+                error = new ParseError(ErrorKind.ContainerSizeMismatch, done.Start);
             }
-            completed = EndFrame(stream, ref error, frames, in done, exact);
+            ok = EndFrame(stream, ref error, state, done, exact);
         }
     }
 
     /// <summary>
-    /// Array-backed stack of frames that hands out the top frame by reference, so frames are not copied
-    /// on every access the way <see cref="Stack{T}.Peek"/> would copy them. It also buffers the children of
-    /// the open frames, so each finished container gets a list of exactly the right size.
+    /// Reads the identifier and length of the next element and records it. A leaf is scanned completely;
+    /// an element whose children have to be read is pushed as a frame.
     /// </summary>
-    private sealed class FrameStack
+    private static Step ScanElement(Stream stream, ref ParseError error, TraitsTable traits, ParseState state, out bool ok)
     {
-        private ContainerFrame[] _items = new ContainerFrame[16];
-        private ITag[] _children = new ITag[16];
-        private int _childCount;
-
-        /// <summary>Number of buffered children; a new frame's children start here.</summary>
-        public int PendingChildren => _childCount;
-
-        public void AddChild(ITag child)
-        {
-            if (_childCount == _children.Length)
-            {
-                Array.Resize(ref _children, _children.Length * 2);
-            }
-            _children[_childCount++] = child;
-        }
-
-        /// <summary>Moves the children buffered since <paramref name="first"/> into <paramref name="tag"/>.</summary>
-        public void AttachChildren(ITag tag, int first)
-        {
-            var count = _childCount - first;
-            if (count > 0)
-            {
-                if (tag is TagBase builtIn && builtIn.ChildCount == 0)
-                {
-                    var list = new List<ITag>(count);
-                    for (int i = first; i < _childCount; i++)
-                        list.Add(_children[i]);
-                    builtIn.SetParsedChildren(list);
-                }
-                else
-                {
-                    // A custom tag, or one the factory created with children already: append through its own list.
-                    var target = tag.Children;
-                    for (int i = first; i < _childCount; i++)
-                        target.Add(_children[i]);
-                }
-            }
-            DropChildren(first);
-        }
-
-        /// <summary>Discards the children buffered since <paramref name="first"/>.</summary>
-        public void DropChildren(int first)
-        {
-            Array.Clear(_children, first, _childCount - first);
-            _childCount = first;
-        }
-
-        /// <summary>
-        /// Clears the stack after a parse, including one that ended in an exception, so it holds no tags.
-        /// Returns <see langword="false"/> when it grew too large to be worth keeping for the next parse.
-        /// </summary>
-        public bool Reset()
-        {
-            Array.Clear(_items, 0, Count);
-            Count = 0;
-            DropChildren(0);
-            return _items.Length <= 256 && _children.Length <= 4096;
-        }
-
-        public int Count { get; private set; }
-
-        public ref ContainerFrame Top => ref _items[Count - 1];
-
-        public void Push(in ContainerFrame frame)
-        {
-            if (Count == _items.Length)
-            {
-                Array.Resize(ref _items, _items.Length * 2);
-            }
-            _items[Count++] = frame;
-        }
-
-        public ContainerFrame Pop()
-        {
-            var frame = _items[--Count];
-            _items[Count] = default;
-            return frame;
-        }
-    }
-
-    /// <summary>
-    /// Reads the identifier and length of the next element. A complete element (or a failure) is returned
-    /// through <paramref name="completed"/>; an element whose children have to be read is pushed onto
-    /// <paramref name="frames"/>.
-    /// </summary>
-    private static Step BeginElement(Stream stream, ref string? error, ITagFactory tagFactory, FrameStack frames, out ITag? completed)
-    {
-        completed = null;
+        ok = false;
         var elementStart = stream.Position;
         var tagNumber = stream.ReadByte();
-        var inIndefinite = frames.Count > 0 && frames.Top.IsIndefinite;
+        var inIndefinite = state.FrameCount > 0 && state.Top.IsIndefinite;
         if (tagNumber == -1)
         {
             error = inIndefinite
-                ? $"Indefinite-length container at offset {frames.Top.Start} has no end-of-contents marker"
-                : $"Unexpected end of data at offset {elementStart}";
+                ? new ParseError(ErrorKind.MissingEndOfContents, state.Top.Start)
+                : new ParseError(ErrorKind.UnexpectedEnd, elementStart);
             return Step.Completed;
         }
         if ((tagNumber & 0x1F) == 0x1F)
         {
             // The tag number continues in the following bytes; reading them as the length would misplace every later element.
-            error = $"Element at offset {elementStart} uses a multi-byte tag number, which is not supported";
+            error = new ParseError(ErrorKind.MultiByteTag, elementStart);
             return Step.Completed;
         }
         long? length = DecodeLength(stream, elementStart, ref error, out var valid);
@@ -436,133 +554,204 @@ public static partial class Asn1Serializer
             {
                 if (length == 0)
                     return Step.EndOfContents;
-                error = $"Invalid end-of-contents marker at offset {elementStart}";
+                error = new ParseError(ErrorKind.InvalidEndOfContents, elementStart);
                 return Step.Completed;
             }
-            if (frames.Count > 0 && frames.Top.Kind == FrameKind.Probe)
+            if (state.FrameCount > 0 && state.Top.Kind == FrameKind.Probe)
             {
                 // EOC cannot be content, so this OCTET STRING does not wrap nested elements.
-                frames.Top.ContainsEoc = true;
+                state.Top.ContainsEoc = true;
             }
         }
 
-        var tag = tagFactory.Create(tagNumber);
+        var tagTraits = traits[tagNumber];
         var start = stream.Position;
+        var record = state.AddRecord(new NodeRecord { Identifier = tagNumber, Start = start, Length = length ?? 0, IsIndefinite = length is null });
 
-        if (tag.IsConstructed || (tagNumber & 0x20) != 0)
+        if (tagTraits.Constructed || (length is not null && tagTraits.Probe))
         {
-            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Container, tag, start, length), out completed);
+            var frame = new ContainerFrame
+            {
+                Kind = tagTraits.Constructed ? FrameKind.Container : FrameKind.Probe,
+                Record = record,
+                Start = start,
+                Length = length,
+                Name = tagTraits.Name,
+            };
+            if (!frame.IsIndefinite && frame.End > stream.Length)
+            {
+                error = new ParseError(ErrorKind.ContainerPastEnd, frame.Start, frame.Length!.Value);
+                ok = EndFrame(stream, ref error, state, frame, success: false);
+                return Step.Completed;
+            }
+            state.Push(frame);
+            return Step.Opened;
         }
 
-        // An OCTET STRING may wrap DER (X.509 extension values do), so its content is tried as nested elements.
-        // A BIT STRING is always a leaf: signatures and keys would otherwise be expanded by accident.
-        if (length is not null && tag.IsUniversal && tag.TagNumber == (int)Tag.OctetString)
-        {
-            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Probe, tag, start, length), out completed);
-        }
-
-        completed = FinishElement(stream, ref error, tag, start, length);
+        ok = SkipContent(stream, ref error, tagTraits.Name, start, length);
         return Step.Completed;
     }
 
     /// <summary>
-    /// Pushes the frame. A definite-length frame is first checked to fit inside the stream;
-    /// when it does not, it is ended unsuccessfully at once.
+    /// Completes an element once its children have been scanned, successfully or not.
     /// </summary>
-    private static Step OpenFrame(Stream stream, ref string? error, FrameStack frames, ContainerFrame frame, out ITag? completed)
+    private static bool EndFrame(Stream stream, ref ParseError error, ParseState state, in ContainerFrame frame, bool success)
     {
-        if (!frame.IsIndefinite && frame.End > stream.Length)
-        {
-            error = $"Container at offset {frame.Start} has a length of {frame.Length}, which is past the end of the stream";
-            frame.FirstChild = frames.PendingChildren;
-            completed = EndFrame(stream, ref error, frames, in frame, success: false);
-            return Step.Completed;
-        }
-        frame.FirstChild = frames.PendingChildren;
-        frames.Push(frame);
-        completed = null;
-        return Step.Opened;
-    }
-
-    /// <summary>
-    /// Completes an element once its children have been read, successfully or not.
-    /// </summary>
-    private static ITag? EndFrame(Stream stream, ref string? error, FrameStack frames, in ContainerFrame frame, bool success)
-    {
+        ref var record = ref state.Records[frame.Record];
         if (frame.Kind == FrameKind.Container)
         {
             if (!success)
-            {
-                frames.DropChildren(frame.FirstChild);
-                return null;
-            }
-            frames.AttachChildren(frame.Tag, frame.FirstChild);
-            // An indefinite-length container has no content of its own, even when it has no children.
-            return frame.IsIndefinite ? frame.Tag : FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
+                return false;
+            record.IsContainer = true;
+            record.ChildCount = frame.ChildCount;
+            return true;
         }
 
-        if (!success || frame.ContainsEoc)
+        if (success && !frame.ContainsEoc)
         {
-            // Not a complete run of nested elements: keep the content as raw bytes.
-            frames.DropChildren(frame.FirstChild);
-            if (TagBase.CountChildren(frame.Tag) > 0)
-                frame.Tag.Children.Clear();
-            stream.Position = frame.Start;
+            record.IsContainer = true;
+            record.ChildCount = frame.ChildCount;
+            return true;
         }
-        else
-        {
-            frames.AttachChildren(frame.Tag, frame.FirstChild);
-        }
-        return FinishElement(stream, ref error, frame.Tag, frame.Start, frame.Length);
+
+        // Not a complete run of nested elements: forget the children and keep the content as raw bytes.
+        state.RecordCount = frame.Record + 1;
+        record.RolledBack = true;
+        stream.Position = frame.Start;
+        return SkipContent(stream, ref error, frame.Name, frame.Start, frame.Length);
     }
 
     /// <summary>
-    /// Shared tail of every element: a node without children takes its content bytes from the stream.
+    /// Checks that a leaf's content is present and moves past it; it is read in the materialize pass.
     /// </summary>
-    private static ITag? FinishElement(Stream stream, ref string? error, ITag tag, long start, long? length)
+    private static bool SkipContent(Stream stream, ref ParseError error, string tagName, long start, long? length)
     {
-        if (TagBase.CountChildren(tag) == 0)
+        if (length is null)
         {
-            if (length is null)
-            {
-                error = "Cannot skip over an invalid tag with indefinite length";
-                return null;
-            }
-            if (length.Value > stream.Length - stream.Position)
-            {
-                error = $"Content size is not correct for tag {tag.TagName} at offset {start}";
-                return null;
-            }
-            var content = new byte[length.Value];
-            var read = 0;
-            while (read < content.Length)
-            {
-                // Streams may return fewer bytes than requested; keep reading until the content is complete.
-                var n = stream.Read(content, read, content.Length - read);
-                if (n == 0)
-                {
-                    error = $"Unexpected end of data in the content of tag {tag.TagName} at offset {start}";
-                    return null;
-                }
-                read += n;
-            }
-            tag.Content = content;
+            error = new ParseError(ErrorKind.IndefinitePrimitive, start);
+            return false;
         }
-        return tag;
+        if (length.Value > stream.Length - stream.Position)
+        {
+            error = new ParseError(ErrorKind.ContentPastEnd, start, name: tagName);
+            return false;
+        }
+        stream.Position += length.Value;
+        return true;
     }
+
+    #endregion
+
+    #region Pass 2: materialize
+
+    /// <summary>
+    /// Creates the recorded tree. Records are in pre-order, so each container's children are the
+    /// subtrees that follow it.
+    /// </summary>
+    private static ITag? Materialize(Stream stream, ref ParseError error, ITagFactory tagFactory, ParseState state)
+    {
+        ITag? root = null;
+        var depth = 0;
+        for (int i = 0; i < state.RecordCount; i++)
+        {
+            ref var record = ref state.Records[i];
+            var tag = tagFactory.Create(record.Identifier);
+
+            if (record.IsContainer)
+            {
+                // A definite-length container without children reads its (empty) content, as a leaf would.
+                if (record.ChildCount == 0 && !record.IsIndefinite && TagBase.CountChildren(tag) == 0)
+                    tag.Content = [];
+            }
+            else
+            {
+                if (record.RolledBack && TagBase.CountChildren(tag) > 0)
+                    tag.Children.Clear();
+                if (TagBase.CountChildren(tag) == 0)
+                {
+                    var content = ReadContent(stream, ref error, tag, record.Start, record.Length);
+                    if (content is null)
+                        return null;
+                    tag.Content = content;
+                }
+            }
+
+            if (depth == 0)
+            {
+                root = tag;
+            }
+            else
+            {
+                ref var parent = ref state.Parents[depth - 1];
+                parent.Children.Add(tag);
+                parent.Remaining--;
+            }
+
+            if (record.IsContainer && record.ChildCount > 0)
+            {
+                IList<ITag> children;
+                if (tag is TagBase builtIn && builtIn.ChildCount == 0)
+                {
+                    var list = new List<ITag>(record.ChildCount);
+                    builtIn.SetParsedChildren(list);
+                    children = list;
+                }
+                else
+                {
+                    // A custom tag, or one the factory created with children already: append through its own list.
+                    children = tag.Children;
+                }
+                if (depth == state.Parents.Length)
+                    Array.Resize(ref state.Parents, state.Parents.Length * 2);
+                state.Parents[depth++] = new OpenParent { Children = children, Remaining = record.ChildCount };
+            }
+
+            while (depth > 0 && state.Parents[depth - 1].Remaining == 0)
+            {
+                state.Parents[--depth] = default;
+            }
+        }
+        return root;
+    }
+
+    /// <summary>
+    /// Reads a leaf's content. Streams may return fewer bytes than requested, so it reads until complete.
+    /// </summary>
+    private static byte[]? ReadContent(Stream stream, ref ParseError error, ITag tag, long start, long length)
+    {
+        if (length == 0)
+            return [];
+        stream.Position = start;
+        var content = new byte[length];
+        var read = 0;
+        while (read < content.Length)
+        {
+            var n = stream.Read(content, read, content.Length - read);
+            if (n == 0)
+            {
+                error = new ParseError(ErrorKind.ContentReadShort, start, name: tag.TagName);
+                return null;
+            }
+            read += n;
+        }
+        return content;
+    }
+
+    #endregion
+
 
     /// <summary>
     /// Reads the length octets of the element whose identifier is at <paramref name="elementStart"/>.
     /// Returns <see langword="null"/> with <paramref name="valid"/> set for indefinite length; on failure
     /// <paramref name="valid"/> is <see langword="false"/> and <paramref name="error"/> says why.
     /// </summary>
-    static long? DecodeLength(Stream data, long elementStart, ref string? error, out bool valid)
+    static long? DecodeLength(Stream data, long elementStart, ref ParseError error, out bool valid)
     {
         valid = false;
         var first = data.ReadByte();
         if (first == -1)
         {
-            error = $"Unexpected end of data in the length of the element at offset {elementStart}";
+            error = new ParseError(ErrorKind.LengthTruncated, elementStart);
             return null;
         }
         if (first < 0x80)
@@ -578,7 +767,7 @@ public static partial class Asn1Serializer
         }
         if (octets > 6)
         {
-            error = $"Length of the element at offset {elementStart} uses {octets} octets; at most 6 are supported";
+            error = new ParseError(ErrorKind.TooManyLengthOctets, elementStart, octets);
             return null;
         }
 
@@ -588,7 +777,7 @@ public static partial class Asn1Serializer
             var b = data.ReadByte();
             if (b == -1)
             {
-                error = $"Unexpected end of data in the length of the element at offset {elementStart}";
+                error = new ParseError(ErrorKind.LengthTruncated, elementStart);
                 return null;
             }
             value = (value << 8) | (uint)b;
@@ -597,7 +786,7 @@ public static partial class Asn1Serializer
         // Content is read into a byte[], so lengths are limited to what an array can index.
         if (value > int.MaxValue)
         {
-            error = $"Length of the element at offset {elementStart} is too large";
+            error = new ParseError(ErrorKind.LengthTooLarge, elementStart);
             return null;
         }
         valid = true;
