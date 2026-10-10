@@ -13,7 +13,7 @@ public class Set : TagBase
     {
     }
     /// <inheritdoc/>
-    public override int TagNumber => 49;
+    public override int TagNumber => (int)Tag.Set;
     /// <inheritdoc/>
     public override string TagName => "Set";
     /// <inheritdoc/>

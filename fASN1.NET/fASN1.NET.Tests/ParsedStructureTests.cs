@@ -90,18 +90,18 @@ public class ParsedStructureTests
     }
 
     [Fact]
-    public void EmbeddedPdv_IsConstructedWithNumber43()
+    public void EmbeddedPdv_IsConstructedWithNumber11()
     {
-        Assert.Equal(0x2B, new EmbeddedPdv().TagNumber);
-        AssertTree("2B 03 02 01 05", new Expected(typeof(EmbeddedPdv), 0x2B, "EmbeddedPDV", 0, true, true, false, [], [Int("05")]));
+        Assert.Equal(11, new EmbeddedPdv().TagNumber);
+        AssertTree("2B 03 02 01 05", new Expected(typeof(EmbeddedPdv), 11, "EmbeddedPDV", 0, true, true, false, [], [Int("05")]));
         Assert.Equal(H("2B 03 02 01 05"), Asn1Serializer.Serialize(Parse("2B 03 02 01 05")));
     }
 
     [Fact]
     public void Application_PrimitiveAndConstructed()
     {
-        AssertTree("41 01 07", new Expected(typeof(Application), 0x41, "Application_1", 1, false, false, false, [0x07], []));
-        AssertTree("63 03 02 01 05", new Expected(typeof(Application), 0x63, "Application_3", 1, true, false, false, [], [Int("05")]));
+        AssertTree("41 01 07", new Expected(typeof(Application), 1, "Application_1", 1, false, false, false, [0x07], []));
+        AssertTree("63 03 02 01 05", new Expected(typeof(Application), 3, "Application_3", 1, true, false, false, [], [Int("05")]));
     }
 
     [Theory]
@@ -120,8 +120,8 @@ public class ParsedStructureTests
     [Fact]
     public void Private_PrimitiveAndConstructed()
     {
-        AssertTree("C2 01 07", new Expected(typeof(Private), 0xC2, "Private_2", 3, false, false, false, [0x07], []));
-        AssertTree("E4 03 02 01 05", new Expected(typeof(Private), 0xE4, "Private_4", 3, true, false, false, [], [Int("05")]));
+        AssertTree("C2 01 07", new Expected(typeof(Private), 2, "Private_2", 3, false, false, false, [0x07], []));
+        AssertTree("E4 03 02 01 05", new Expected(typeof(Private), 4, "Private_4", 3, true, false, false, [], [Int("05")]));
     }
 
     #endregion
@@ -134,8 +134,8 @@ public class ParsedStructureTests
         AssertTree("05 00", Null());
         AssertTree("04 00", Octets(""));
         AssertTree("03 00", Bits(""));
-        AssertTree("30 00", new Expected(typeof(Sequence), 48, "Sequence", 0, true, true, false, [], []));
-        AssertTree("31 00", new Expected(typeof(Tags.Set), 49, "Set", 0, true, true, false, [], []));
+        AssertTree("30 00", new Expected(typeof(Sequence), 16, "Sequence", 0, true, true, false, [], []));
+        AssertTree("31 00", new Expected(typeof(Tags.Set), 17, "Set", 0, true, true, false, [], []));
         AssertTree("A0 00", Ctx(0xA0, ""));
         AssertTree("30 02 05 00", Seq(Null()));
     }
@@ -293,7 +293,7 @@ public class ParsedStructureTests
     public void Indefinite_EndsOnlyAtEndOfContentsBytes()
     {
         // A constructed OCTET STRING (0x24) is an Unknown tag; it is an ordinary child and must not end the SEQUENCE.
-        var unknown = new Expected(typeof(Unknown), 0x24, "Unknown_4", 0, true, true, false, [], [Octets("41")]);
+        var unknown = new Expected(typeof(Unknown), 4, "Unknown_4", 0, true, true, false, [], [Octets("41")]);
         AssertTree("30 80 24 80 04 01 41 00 00 02 01 05 00 00", Seq(unknown, Int("05")));
     }
 
@@ -315,7 +315,7 @@ public class ParsedStructureTests
     {
         AssertTree("30 80 00 00 02 01 07", Seq());
         AssertTree("30 80 30 80 00 00 02 01 07 00 00", Seq(Seq(), Int("07")));
-        AssertTree("30 80 A0 80 00 00 00 00", Seq(new Expected(typeof(ContextSpecific_0), 0xA0, "[0]", 2, false, false, false, [], [])));
+        AssertTree("30 80 A0 80 00 00 00 00", Seq(new Expected(typeof(ContextSpecific_0), 0, "[0]", 2, true, false, false, [], [])));
     }
 
     #endregion
@@ -408,13 +408,36 @@ public class ParsedStructureTests
     public void FailureDeepInside_FailsWholeDocument() =>
         AssertFails("30 08 30 06 30 04 02 05 01 02", "Content size is not correct for tag Integer at offset 8");
 
-    [Theory]
-    [InlineData("1F 21 01 05", 0)]
-    [InlineData("BF 21 03 02 01 05", 0)]
-    [InlineData("30 04 5F 21 01 05", 2)]
-    public void MultiByteTagNumber_Fails(string hex, int offset)
+    [Fact]
+    public void MultiByteTagNumber_IsRead()
     {
-        AssertFails(hex, $"Element at offset {offset} uses a multi-byte tag number, which is not supported");
+        AssertTree("1F 21 01 05", new Expected(typeof(Unknown), 33, "Unknown_33", 0, false, true, false, [0x05], []));
+        AssertTree("BF 28 03 02 01 05", new Expected(typeof(ContextSpecificTag), 40, "[40]", 2, true, false, false, [], [Int("05")]));
+        AssertTree("30 05 5F 87 68 01 05",
+            Seq(new Expected(typeof(Application), 1000, "Application_1000", 1, false, false, false, [0x05], [])));
+        AssertTree("DF 87 FF FF FF 7F 00", new Expected(typeof(Private), int.MaxValue, $"Private_{int.MaxValue}", 3, false, false, false, [], []));
+    }
+
+    [Theory]
+    [InlineData("1F 21 01 05")]
+    [InlineData("BF 28 03 02 01 05")]
+    [InlineData("5F 87 68 01 05")]
+    [InlineData("30 07 9F 1F 00 BF 81 00 00")]
+    public void MultiByteTagNumber_SerializesBackToTheSameBytes(string hex)
+    {
+        Assert.Equal(H(hex), Asn1Serializer.Serialize(Parse(hex)));
+    }
+
+    [Theory]
+    [InlineData("1F 80 21 01 05", "The tag number of the element at offset 0 is not in the shortest form")] // leading zero digit
+    [InlineData("1F 1E 01 05", "The tag number of the element at offset 0 is not in the shortest form")]    // 30 fits one byte
+    [InlineData("30 03 5F 05 00", "The tag number of the element at offset 2 is not in the shortest form")]
+    [InlineData("1F 88 80 80 80 00 00", "The tag number of the element at offset 0 is too large")]          // 2^31
+    [InlineData("1F 81", "Unexpected end of data in the identifier of the element at offset 0")]
+    [InlineData("1F", "Unexpected end of data in the identifier of the element at offset 0")]
+    public void InvalidMultiByteTagNumber_Fails(string hex, string error)
+    {
+        AssertFails(hex, error);
     }
 
     [Fact]
@@ -500,9 +523,9 @@ public class ParsedStructureTests
 
         public HashSet<ITag> Created { get; } = new(ReferenceEqualityComparer.Instance);
 
-        public ITag Create(int tag, byte[]? content = null)
+        public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
         {
-            var created = _inner.Create(tag, content);
+            var created = _inner.Create(tagClass, isConstructed, tagNumber, content);
             Created.Add(created);
             return created;
         }

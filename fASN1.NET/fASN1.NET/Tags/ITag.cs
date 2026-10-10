@@ -9,7 +9,8 @@ namespace fASN1.NET.Tags;
 public interface ITag
 {
     /// <summary>
-    /// Gets the tag number.
+    /// Gets the tag number within its <see cref="TagClass"/>: 16 for SEQUENCE, 2 for <c>[2]</c>, 1000 for
+    /// <c>[1000]</c>. It is not the identifier byte, which also holds the class and the constructed bit.
     /// </summary>
     int TagNumber { get; }
 
@@ -19,7 +20,7 @@ public interface ITag
     string TagName { get; }
 
     /// <summary>
-    /// Gets the tag class.
+    /// Gets the tag class: 0 universal, 1 application, 2 context-specific, 3 private.
     /// </summary>
     int TagClass { get; }
 

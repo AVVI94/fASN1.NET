@@ -130,21 +130,31 @@ public class SerializeStructureTests
     [Fact]
     public void ElementWithChildren_GetsTheConstructedBit()
     {
-        // [0] given as the primitive identifier 0x80 but holding children, as in an EXPLICIT tag built by hand.
-        var tag = new ContextSpecific_0(0x80, children: [new Integer(5)]);
+        // [0] created as primitive but holding children, as in an EXPLICIT tag built by hand.
+        var tag = new ContextSpecific_0(isConstructed: false, children: [new Integer(5)]);
 
         Assert.Equal(H("A0 03 02 01 05"), Asn1Serializer.Serialize(tag));
         Assert.Equal(H("30 03 02 01 05"), Asn1Serializer.Serialize(new UniversalTag(0x10, children: [new Integer(5)])));
     }
 
     [Theory]
-    [InlineData(0x1F)]  // the low five bits 11111 announce a multi-byte tag number
-    [InlineData(0x3F)]
-    [InlineData(0x100)] // used to be truncated to 0x00, an end-of-contents marker
-    [InlineData(-1)]
-    public void TagNumberThatDoesNotFitOneByte_IsRejected(int number)
+    [InlineData(30, "1E")]
+    [InlineData(31, "1F 1F")]            // the first number that needs the multi-byte form
+    [InlineData(127, "1F 7F")]
+    [InlineData(128, "1F 81 00")]
+    [InlineData(0x100, "1F 82 00")]      // used to be truncated to 0x00, an end-of-contents marker
+    [InlineData(int.MaxValue, "1F 87 FF FF FF 7F")]
+    public void TagNumber_IsWrittenInTheShortestForm(int number, string identifier)
     {
-        Assert.Throws<ArgumentException>(() => Asn1Serializer.Serialize(new Sequence([new UniversalTag(number, [0x01])])));
+        var serialized = Asn1Serializer.Serialize(new UniversalTag(number, [0xAB]));
+
+        Assert.Equal(Convert.ToHexString(H(identifier + " 01 AB")), Convert.ToHexString(serialized));
+    }
+
+    [Fact]
+    public void NegativeTagNumber_IsRejected()
+    {
+        Assert.Throws<ArgumentException>(() => Asn1Serializer.Serialize(new Sequence([new UniversalTag(-1, [0x01])])));
     }
 
     [Fact]

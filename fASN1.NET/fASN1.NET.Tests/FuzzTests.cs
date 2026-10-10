@@ -152,7 +152,7 @@ internal static class BerGenerator
         rng.NextBytes(content);
         if (tag == 0x03 && content.Length > 0 && rng.Next(2) == 0)
             content[0] = 0;
-        return Tlv(tag, content, rng, allowIndefinite: false);
+        return Tlv(Identifier(tag, rng), content, rng, allowIndefinite: false);
     }
 
     private static byte[] Encapsulating(Random rng, int depth)
@@ -164,7 +164,7 @@ internal static class BerGenerator
         bool bitString = rng.Next(4) == 0;
         if (bitString)
             body.Insert(0, 0x00);
-        return Tlv(bitString ? (byte)0x03 : (byte)0x04, body.ToArray(), rng, allowIndefinite: false);
+        return Tlv([bitString ? (byte)0x03 : (byte)0x04], body.ToArray(), rng, allowIndefinite: false);
     }
 
     private static byte[] Constructed(Random rng, int depth)
@@ -178,12 +178,27 @@ internal static class BerGenerator
             if (rng.Next(25) == 0)
                 body.AddRange([0x00, 0x00]);
         }
-        return Tlv(tag, body.ToArray(), rng, allowIndefinite: true);
+        return Tlv(Identifier(tag, rng), body.ToArray(), rng, allowIndefinite: true);
     }
 
-    private static byte[] Tlv(byte tag, byte[] content, Random rng, bool allowIndefinite)
+    /// <summary>
+    /// The identifier for <paramref name="tag"/>, or now and then the same class and constructed bit with a tag number
+    /// of 31 or more in the multi-byte form.
+    /// </summary>
+    private static byte[] Identifier(byte tag, Random rng)
     {
-        var result = new List<byte> { tag };
+        if (tag == 0x00 || rng.Next(8) != 0)
+            return [tag];
+        var number = 31 + rng.Next(5000);
+        var digits = new List<byte>();
+        for (var n = number; n > 0; n >>= 7)
+            digits.Insert(0, (byte)((n & 0x7F) | (digits.Count == 0 ? 0 : 0x80)));
+        return [(byte)((tag & 0xE0) | 0x1F), .. digits];
+    }
+
+    private static byte[] Tlv(byte[] identifier, byte[] content, Random rng, bool allowIndefinite)
+    {
+        var result = new List<byte>(identifier);
         if (allowIndefinite && rng.Next(3) == 0)
         {
             result.Add(0x80);

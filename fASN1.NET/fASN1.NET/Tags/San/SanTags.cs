@@ -155,7 +155,7 @@ public class EdiPartyName : ISanItem
         {
             if (field.TagClass != 2 || field.Children.Count != 1)
                 continue;
-            switch (field.TagNumber & 0x1F)
+            switch (field.TagNumber)
             {
                 case 0:
                     NameAssigner = field.Children[0].ContentToString();

@@ -14,32 +14,30 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid elements with DER lengths
 /// (definite, minimal; none of them EOC) and every SET in DER order is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
-/// <item>Only single-byte identifiers are supported.</item>
 /// </list>
 /// </remarks>
-internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNode> Children)
+internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumber, byte[] Content, List<OracleNode> Children)
 {
     public static OracleNode Decode(ReadOnlySpan<byte> data) => ReadElement(data, AsnEncodingRules.BER, out _);
 
     private static OracleNode ReadElement(ReadOnlySpan<byte> src, AsnEncodingRules rules, out int consumed)
     {
-        if ((src[0] & 0x1F) == 0x1F)
-            throw new AsnContentException("Multi-byte identifiers are outside the supported subset");
         AsnDecoder.ReadEncodedValue(src, rules, out var contentOffset, out var contentLength, out consumed);
-        var identifier = src[0];
+        var tag = Asn1Tag.Decode(src, out _);
+        var (tagClass, isConstructed, number) = ((int)tag.TagClass >> 6, tag.IsConstructed, tag.TagValue);
         var content = src.Slice(contentOffset, contentLength);
 
         // Inside an OCTET STRING, a SET must also be in DER order (X.690 §11.6), which ReadSetOf checks.
-        if (rules == AsnEncodingRules.DER && identifier == 0x31)
+        if (rules == AsnEncodingRules.DER && tagClass == 0 && isConstructed && number == 17)
             new AsnReader(src.Slice(0, consumed).ToArray(), AsnEncodingRules.DER).ReadSetOf();
 
-        if ((identifier & 0x20) != 0)
-            return new OracleNode(identifier, [], ReadAll(content, rules));
+        if (isConstructed)
+            return new OracleNode(tagClass, isConstructed, number, [], ReadAll(content, rules));
 
-        if (identifier == 0x04 && TryReadEncapsulated(content, out var encapsulated))
-            return new OracleNode(identifier, [], encapsulated);
+        if (tagClass == 0 && number == 4 && TryReadEncapsulated(content, out var encapsulated))
+            return new OracleNode(tagClass, isConstructed, number, [], encapsulated);
 
-        return new OracleNode(identifier, content.ToArray(), []);
+        return new OracleNode(tagClass, isConstructed, number, content.ToArray(), []);
     }
 
     private static List<OracleNode> ReadAll(ReadOnlySpan<byte> content, AsnEncodingRules rules)
@@ -62,13 +60,15 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
             // form would change the OCTET STRING value on Serialize.
             children = ReadAll(content, AsnEncodingRules.DER);
             // EOC cannot be content, so a direct EOC child means this is not a run of elements.
-            return children.Count > 0 && !children.Any(c => c.Identifier == 0x00);
+            return children.Count > 0 && !children.Any(c => c.IsEoc);
         }
         catch (AsnContentException)
         {
             return false;
         }
     }
+
+    public bool IsEoc => TagClass == 0 && !IsConstructed && TagNumber == 0;
 
     public int CountNodes() => 1 + Children.Sum(c => c.CountNodes());
 
@@ -80,13 +80,14 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
 
     private void AssertMatches(ITag actual, string path)
     {
-        var id = Identifier;
-        Check(path, "type", TagIdentity.ExpectedType(id), actual.GetType());
-        Check(path, nameof(ITag.TagName), TagIdentity.ExpectedName(id), actual.TagName);
-        Check(path, nameof(ITag.TagClass), id >> 6, actual.TagClass);
-        Check(path, nameof(ITag.IsUniversal), id >> 6 == 0, actual.IsUniversal);
-        Check(path, nameof(ITag.TagNumber), TagIdentity.ExpectedTagNumber(id), actual.TagNumber);
-        Check(path, nameof(ITag.IsEoc), id == 0x00, actual.IsEoc);
+        Check(path, "type", TagIdentity.ExpectedType(TagClass, IsConstructed, TagNumber), actual.GetType());
+        Check(path, nameof(ITag.TagName), TagIdentity.ExpectedName(TagClass, IsConstructed, TagNumber), actual.TagName);
+        Check(path, nameof(ITag.TagClass), TagClass, actual.TagClass);
+        Check(path, nameof(ITag.IsUniversal), TagClass == 0, actual.IsUniversal);
+        Check(path, nameof(ITag.TagNumber), TagNumber, actual.TagNumber);
+        Check(path, nameof(ITag.IsEoc), IsEoc, actual.IsEoc);
+        // An OCTET STRING read as encapsulated children reports itself constructed, though its encoding is primitive.
+        Check(path, nameof(ITag.IsConstructed), IsConstructed || Children.Count > 0, actual.IsConstructed);
         Check(path, nameof(ITag.Content), Convert.ToHexString(Content), Convert.ToHexString(actual.Content));
         Check(path, "Children.Count", Children.Count, actual.Children.Count);
         for (int i = 0; i < Children.Count; i++)
@@ -105,44 +106,55 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
 /// </summary>
 internal static class TagIdentity
 {
-    private static readonly Dictionary<int, (Type Type, string Name, int TagNumber)> _universal = new()
+    /// <summary>Universal types by their single identifier byte.</summary>
+    private static readonly Dictionary<int, (Type Type, string Name)> _universal = new()
     {
-        [0x00] = (typeof(Eoc), "Eoc", 0),
-        [0x01] = (typeof(BooleanTag), "Boolean", 1),
-        [0x02] = (typeof(Integer), "Integer", 2),
-        [0x03] = (typeof(BitString), "BitString", 3),
-        [0x04] = (typeof(OctetString), "OctetString", 4),
-        [0x05] = (typeof(Null), "Null", 5),
-        [0x06] = (typeof(ObjectIdentifier), "ObjectIdentifier", 6),
-        [0x07] = (typeof(ObjectDescriptor), "ObjectDescriptor", 7),
-        [0x08] = (typeof(External), "External", 8),
-        [0x09] = (typeof(Real), "Real", 9),
-        [0x0A] = (typeof(Enumerated), "Enumerated", 10),
-        [0x0C] = (typeof(Utf8String), "UTF8String", 12),
-        [0x12] = (typeof(NumericString), "NumericString", 18),
-        [0x13] = (typeof(PrintableString), "PrintableString", 19),
-        [0x14] = (typeof(TeletexString), "TeletexString", 20),
-        [0x15] = (typeof(VideotexString), "VideotexString", 21),
-        [0x16] = (typeof(IA5String), "IA5String", 22),
-        [0x17] = (typeof(UTCTime), "UTCTime", 23),
-        [0x18] = (typeof(GeneralizedTime), "GeneralizedTime", 24),
-        [0x19] = (typeof(GraphicString), "GraphicString", 25),
-        [0x1A] = (typeof(VisibleString), "VisibleString", 26),
-        [0x1B] = (typeof(GeneralString), "GeneralString", 27),
-        [0x1C] = (typeof(UniversalString), "UniversalString", 28),
-        [0x1E] = (typeof(BMPString), "BMPString", 30),
-        [0x30] = (typeof(Sequence), "Sequence", 48),
-        [0x31] = (typeof(Tags.Set), "Set", 49),
-        [0x2B] = (typeof(EmbeddedPdv), "EmbeddedPDV", 43),
+        [0x00] = (typeof(Eoc), "Eoc"),
+        [0x01] = (typeof(BooleanTag), "Boolean"),
+        [0x02] = (typeof(Integer), "Integer"),
+        [0x03] = (typeof(BitString), "BitString"),
+        [0x04] = (typeof(OctetString), "OctetString"),
+        [0x05] = (typeof(Null), "Null"),
+        [0x06] = (typeof(ObjectIdentifier), "ObjectIdentifier"),
+        [0x07] = (typeof(ObjectDescriptor), "ObjectDescriptor"),
+        [0x08] = (typeof(External), "External"),
+        [0x09] = (typeof(Real), "Real"),
+        [0x0A] = (typeof(Enumerated), "Enumerated"),
+        [0x0C] = (typeof(Utf8String), "UTF8String"),
+        [0x12] = (typeof(NumericString), "NumericString"),
+        [0x13] = (typeof(PrintableString), "PrintableString"),
+        [0x14] = (typeof(TeletexString), "TeletexString"),
+        [0x15] = (typeof(VideotexString), "VideotexString"),
+        [0x16] = (typeof(IA5String), "IA5String"),
+        [0x17] = (typeof(UTCTime), "UTCTime"),
+        [0x18] = (typeof(GeneralizedTime), "GeneralizedTime"),
+        [0x19] = (typeof(GraphicString), "GraphicString"),
+        [0x1A] = (typeof(VisibleString), "VisibleString"),
+        [0x1B] = (typeof(GeneralString), "GeneralString"),
+        [0x1C] = (typeof(UniversalString), "UniversalString"),
+        [0x1E] = (typeof(BMPString), "BMPString"),
+        [0x30] = (typeof(Sequence), "Sequence"),
+        [0x31] = (typeof(Tags.Set), "Set"),
+        [0x2B] = (typeof(EmbeddedPdv), "EmbeddedPDV"),
     };
 
     public static IEnumerable<int> KnownUniversalIdentifiers => _universal.Keys;
 
-    public static Type ExpectedType(int id) => (id >> 6) switch
+    public static Type ExpectedType(int id) => ExpectedType(id >> 6, (id & 0x20) != 0, id & 0x1F);
+
+    public static string ExpectedName(int id) => ExpectedName(id >> 6, (id & 0x20) != 0, id & 0x1F);
+
+    public static int ExpectedTagNumber(int id) => id & 0x1F;
+
+    /// <summary>The single identifier byte of a tag number below 31, or -1 for the multi-byte form.</summary>
+    private static int LowFormIdentifier(int tagClass, bool isConstructed, int number)
+        => number < 31 ? (tagClass << 6) | (isConstructed ? 0x20 : 0) | number : -1;
+
+    public static Type ExpectedType(int tagClass, bool isConstructed, int number) => tagClass switch
     {
-        0 => _universal.TryGetValue(id, out var u) ? u.Type : typeof(Unknown),
+        0 => _universal.TryGetValue(LowFormIdentifier(tagClass, isConstructed, number), out var u) ? u.Type : typeof(Unknown),
         1 => typeof(Application),
-        2 => (id & 0x1F) switch
+        2 => number switch
         {
             0 => typeof(ContextSpecific_0),
             1 => typeof(ContextSpecific_1),
@@ -153,16 +165,11 @@ internal static class TagIdentity
         _ => typeof(Private),
     };
 
-    public static string ExpectedName(int id) => (id >> 6) switch
+    public static string ExpectedName(int tagClass, bool isConstructed, int number) => tagClass switch
     {
-        0 => _universal.TryGetValue(id, out var u) ? u.Name : $"Unknown_{id & 0x1F}",
-        1 => $"Application_{id & 0x1F}",
-        2 => $"[{id & 0x1F}]",
-        _ => $"Private_{id & 0x1F}",
+        0 => _universal.TryGetValue(LowFormIdentifier(tagClass, isConstructed, number), out var u) ? u.Name : $"Unknown_{number}",
+        1 => $"Application_{number}",
+        2 => $"[{number}]",
+        _ => $"Private_{number}",
     };
-
-    /// <summary>
-    /// Known universal classes report their fixed number; every other class reports the identifier byte.
-    /// </summary>
-    public static int ExpectedTagNumber(int id) => (id >> 6) == 0 && _universal.TryGetValue(id, out var u) ? u.TagNumber : id;
 }

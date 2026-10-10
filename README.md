@@ -116,7 +116,7 @@ var root = new Sequence([
     new Sequence([
         new ObjectIdentifier([0,1,35,45,55,127,126]),
         new Utf8String(Encoding.UTF8.GetBytes("Random text")),
-        new ContextSpecific_0(0xA0, children: [
+        new ContextSpecific_0(isConstructed: true, children: [
             new BitString(content: [123,125,222,255,0,1,4])
             ])
     ])

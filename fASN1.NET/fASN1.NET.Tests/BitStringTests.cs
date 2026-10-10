@@ -49,7 +49,7 @@ public class BitStringTests
     public void Factory_KeepsContentAsGiven()
     {
         // Content handed to a factory already starts with the unused-bits byte; another one used to be put in front.
-        var tag = new DefaultTagFactory().Create(0x03, [0x05, 0xA0]);
+        var tag = new DefaultTagFactory().Create(0, false, 3, [0x05, 0xA0]);
 
         Assert.Equal([0x05, 0xA0], tag.Content);
     }

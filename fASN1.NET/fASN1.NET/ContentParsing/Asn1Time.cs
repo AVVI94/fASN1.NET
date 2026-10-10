@@ -97,7 +97,7 @@ internal static class Asn1Time
     public static bool TryParse(ITag tag, out DateTime value)
     {
         value = default;
-        return tag.Children.Count == 0 && tag.TagNumber switch
+        return tag.Children.Count == 0 && tag.TagClass == 0 && tag.TagNumber switch
         {
             (int)Tag.UTCTime => TryParseUtcTime(tag.Content, out value),
             (int)Tag.GeneralizedTime => TryParseGeneralizedTime(tag.Content, out value),

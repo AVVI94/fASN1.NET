@@ -14,7 +14,9 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
     {
         ParseFailureKind.UnexpectedEndOfData => $"Unexpected end of data at offset {offset}",
         ParseFailureKind.MissingEndOfContents => $"Indefinite-length container at offset {offset} has no end-of-contents marker",
-        ParseFailureKind.MultiByteTagNumber => $"Element at offset {offset} uses a multi-byte tag number, which is not supported",
+        ParseFailureKind.IdentifierTruncated => $"Unexpected end of data in the identifier of the element at offset {offset}",
+        ParseFailureKind.NonMinimalTagNumber => $"The tag number of the element at offset {offset} is not in the shortest form",
+        ParseFailureKind.TagNumberTooLarge => $"The tag number of the element at offset {offset} is too large",
         ParseFailureKind.InvalidEndOfContents => $"Invalid end-of-contents marker at offset {offset}",
         ParseFailureKind.ContainerPastEndOfData => $"Container at offset {offset} has a length of {value}, which is past the end of the stream",
         ParseFailureKind.ContainerSizeMismatch => $"Content size is not correct for container at offset {offset}",

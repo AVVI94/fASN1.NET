@@ -128,9 +128,9 @@ public class SubjectDirectoryAttributes
         // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF AttributeValue }
         foreach (var sdaItem in sda.Children)
         {
-            if (sdaItem is not { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
-                || sdaItem[0].TagNumber != (int)Tag.ObjectIdentifier
-                || sdaItem[1] is not { TagNumber: (int)Tag.Set, Children.Count: > 0 } values)
+            if (sdaItem is not { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+                || !sdaItem[0].Is(Tag.ObjectIdentifier)
+                || sdaItem[1] is not { TagClass: 0, TagNumber: (int)Tag.Set, Children.Count: > 0 } values)
             {
                 continue;
             }

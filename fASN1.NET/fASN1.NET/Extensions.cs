@@ -47,13 +47,13 @@ public static partial class Extensions
         try
         {
             // ExtKeyUsageSyntax ::= SEQUENCE SIZE (1..MAX) OF KeyPurposeId (OBJECT IDENTIFIER)
-            if (FindExtensionContent(certificateTag, _extKeyUsageSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence } purposes)
+            if (FindExtensionContent(certificateTag, _extKeyUsageSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } purposes)
                 return false;
 
             bool ekuFound = false;
             foreach (var e in purposes.Children)
             {
-                if (e.TagNumber != (int)Tag.ObjectIdentifier)
+                if (!e.Is(Tag.ObjectIdentifier))
                     continue;
                 ekuFound = true;
                 switch (OidEncoder.GetString(e.Content))
@@ -103,9 +103,9 @@ public static partial class Extensions
         try
         {
             // SEQUENCE { masterRequestId, interconnectedCertificatesCount INTEGER, isMaster BOOLEAN }
-            if (FindExtensionContent(certificate, _icaCertInterconnectionSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence, Children.Count: 3 } value
-                || value.Children[1].TagNumber != (int)Tag.Integer
-                || value.Children[2].TagNumber != (int)Tag.Boolean
+            if (FindExtensionContent(certificate, _icaCertInterconnectionSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 3 } value
+                || !value.Children[1].Is(Tag.Integer)
+                || !value.Children[2].Is(Tag.Boolean)
                 || !int.TryParse(value.Children[1].ContentToString(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var count))
             {
                 return false;
@@ -215,7 +215,7 @@ public static partial class Extensions
         try
         {
             // GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
-            if (FindExtensionContent(tag, _sanOidSequence) is not { TagNumber: (int)Tag.Sequence } names)
+            if (FindExtensionContent(tag, _sanOidSequence) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } names)
                 return false;
             foreach (var name in names.Children)
             {
@@ -238,11 +238,11 @@ public static partial class Extensions
         {
             if (name.TagClass != 2)
                 return null;
-            switch (name.TagNumber & 0x1F)
+            switch (name.TagNumber)
             {
                 case 0:
                     // OtherName ::= SEQUENCE { type-id OBJECT IDENTIFIER, value [0] EXPLICIT ANY }
-                    if (name.Children.Count != 2 || name.Children[0].TagNumber != (int)Tag.ObjectIdentifier || name.Children[1].Children.Count != 1)
+                    if (name.Children.Count != 2 || !name.Children[0].Is(Tag.ObjectIdentifier) || name.Children[1].Children.Count != 1)
                         return null;
                     if (name.Children[0].Content.SequenceEqual(_icaUserIdSequence))
                         return new IcaUserId(name.Children[1]);
@@ -361,11 +361,11 @@ public static partial class Extensions
         try
         {
             // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] IMPLICIT OCTET STRING OPTIONAL, ... }
-            if (FindExtensionContent(tag, _authorityKeyIdentifierOidSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence } aki)
+            if (FindExtensionContent(tag, _authorityKeyIdentifierOidSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } aki)
                 return false;
             foreach (var field in aki.Children)
             {
-                if (field.TagClass == 2 && (field.TagNumber & 0x1F) == 0)
+                if (field.TagClass == 2 && field.TagNumber == 0)
                 {
                     authorityKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(field));
                     return true;
@@ -392,7 +392,7 @@ public static partial class Extensions
         try
         {
             // SubjectKeyIdentifier ::= KeyIdentifier ::= OCTET STRING
-            if (FindExtensionContent(tag, _subjectKeyIdentifierOidSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.OctetString } keyId)
+            if (FindExtensionContent(tag, _subjectKeyIdentifierOidSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.OctetString } keyId)
                 return false;
             subjectKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(keyId));
             return true;
@@ -584,6 +584,15 @@ public static partial class Extensions
     }
 
     /// <summary>
+    /// Whether <paramref name="tag"/> is the universal type <paramref name="type"/>. <see cref="ITag.TagNumber"/> alone
+    /// does not say so: the context-specific <c>[16]</c> has the same number as SEQUENCE.
+    /// </summary>
+    /// <param name="tag">The tag to check.</param>
+    /// <param name="type">The universal type.</param>
+    /// <returns><see langword="true"/> if the tag is of the universal class and has the type's number.</returns>
+    public static bool Is(this ITag tag, Tag type) => tag.TagClass == 0 && tag.TagNumber == (int)type;
+
+    /// <summary>
     /// Attempts to get the value for the requested subject item from the specified certificate request tag.
     /// </summary>
     /// <remarks>
@@ -597,7 +606,7 @@ public static partial class Extensions
         {
             return OctetStringParsingStrategy.Default.Parse(tag.Content);
         }
-        return (strategyLocator ?? StrategyLocator.Default).GetStrategy(tag.TagNumber & 0x1F)
+        return (strategyLocator ?? StrategyLocator.Default).GetStrategy(tag.TagNumber)
                                                            .Parse(tag.Content);
     }
 }

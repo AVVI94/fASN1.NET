@@ -36,7 +36,7 @@ internal static class TreeAssert
                 throw Fail(path, nameof(ITag.Content), Convert.ToHexString(e.Content), Convert.ToHexString(a.Content));
             }
             Check(path, "Children.Count", e.Children.Count, a.Children.Count);
-            var expectedChildren = setsInDerOrder && e.TagNumber == (int)Tag.Set ? InDerOrder(e.Children) : e.Children;
+            var expectedChildren = setsInDerOrder && e.Is(Tag.Set) ? InDerOrder(e.Children) : e.Children;
             for (int i = expectedChildren.Count - 1; i >= 0; i--)
             {
                 stack.Push((expectedChildren[i], a.Children[i], $"{path}/{i}"));

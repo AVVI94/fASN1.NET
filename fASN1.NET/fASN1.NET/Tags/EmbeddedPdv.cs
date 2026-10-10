@@ -13,7 +13,7 @@ public class EmbeddedPdv : TagBase
     {
     }
     /// <inheritdoc/>
-    public override int TagNumber => 0x2B; // universal 11, always constructed (like Sequence = 0x30)
+    public override int TagNumber => (int)Tag.EmbeddedPDV;
     /// <inheritdoc/>
     public override string TagName => "EmbeddedPDV";
     /// <inheritdoc/>

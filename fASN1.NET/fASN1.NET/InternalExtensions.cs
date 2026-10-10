@@ -32,8 +32,9 @@ internal static class InternalExtensions
     public static readonly byte[] _dateOfBirthOidSequence = OID.GetOrCreate(OID.DATE_OF_BIRTH).ByteValue;
     public static readonly byte[] _placeOfBirthOidSequence = OID.GetOrCreate(OID.PLACE_OF_BIRTH).ByteValue;
 
-    /// <summary>Identifier byte of a constructed context-specific tag [<paramref name="number"/>].</summary>
-    private static int ContextConstructed(int number) => 0xA0 | number;
+    /// <summary>Whether <paramref name="tag"/> is the constructed context-specific tag [<paramref name="number"/>].</summary>
+    private static bool IsContextConstructed(ITag tag, int number)
+        => tag.TagClass == 2 && tag.TagNumber == number && tag.IsConstructed;
 
     #region Structure
     /// <summary>
@@ -48,18 +49,18 @@ internal static class InternalExtensions
     /// </remarks>
     public static bool IsV3Certificate(ITag tag)
     {
-        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence } tbs || tbs.Children.Count < 7)
+        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagClass: 0, TagNumber: (int)Tag.Sequence } tbs || tbs.Children.Count < 7)
             return false;
 
         var version = tbs.Children[0];
-        return version.TagNumber == ContextConstructed(0)
+        return IsContextConstructed(version, 0)
                && version.Children.Count == 1
-               && version.Children[0] is { TagNumber: (int)Tag.Integer } versionNumber
+               && version.Children[0] is { TagClass: 0, TagNumber: (int)Tag.Integer } versionNumber
                && versionNumber.Content.SequenceEqual(_version2Sequence)
-               && tbs.Children[1].TagNumber == (int)Tag.Integer
+               && tbs.Children[1].Is(Tag.Integer)
                && IsAlgorithmIdentifier(tbs.Children[2])
                && IsName(tbs.Children[3])
-               && tbs.Children[4] is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+               && tbs.Children[4] is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
                && IsName(tbs.Children[5])
                && IsSubjectPublicKeyInfo(tbs.Children[6]);
     }
@@ -77,36 +78,36 @@ internal static class InternalExtensions
     /// </remarks>
     public static bool IsCertificationRequest(ITag tag)
     {
-        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence, Children.Count: 3 or 4 } info)
+        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 3 or 4 } info)
             return false;
 
-        return info.Children[0] is { TagNumber: (int)Tag.Integer } version
+        return info.Children[0] is { TagClass: 0, TagNumber: (int)Tag.Integer } version
                && version.Content.SequenceEqual(_version0Sequence)
                && IsName(info.Children[1])
                && IsSubjectPublicKeyInfo(info.Children[2])
-               && (info.Children.Count == 3 || info.Children[3].TagNumber == ContextConstructed(0));
+               && (info.Children.Count == 3 || IsContextConstructed(info.Children[3], 0));
     }
 
     private static bool IsSignedSequence(ITag tag)
-        => tag.TagNumber == (int)Tag.Sequence
+        => tag.Is(Tag.Sequence)
            && tag.Children.Count == 3
            && IsAlgorithmIdentifier(tag.Children[1])
-           && tag.Children[2] is { TagNumber: (int)Tag.BitString, Children.Count: 0 };
+           && tag.Children[2] is { TagClass: 0, TagNumber: (int)Tag.BitString, Children.Count: 0 };
 
     /// <summary><c>AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY OPTIONAL }</c></summary>
     private static bool IsAlgorithmIdentifier(ITag tag)
-        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 1 or 2 }
-           && tag.Children[0].TagNumber == (int)Tag.ObjectIdentifier;
+        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 1 or 2 }
+           && tag.Children[0].Is(Tag.ObjectIdentifier);
 
     /// <summary><c>Name ::= SEQUENCE OF RelativeDistinguishedName</c>, each a SET.</summary>
     private static bool IsName(ITag tag)
-        => tag.TagNumber == (int)Tag.Sequence && tag.Children.All(IsSET);
+        => tag.Is(Tag.Sequence) && tag.Children.All(IsSET);
 
     /// <summary><c>SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }</c></summary>
     private static bool IsSubjectPublicKeyInfo(ITag tag)
-        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
            && IsAlgorithmIdentifier(tag.Children[0])
-           && tag.Children[1].TagNumber == (int)Tag.BitString;
+           && tag.Children[1].Is(Tag.BitString);
 
     /// <summary>The tbsCertificate fields of a certificate that passed <see cref="IsV3Certificate"/>.</summary>
     public static IList<ITag> TbsFields(ITag certificate) => certificate.Children[0].Children;
@@ -128,7 +129,7 @@ internal static class InternalExtensions
         {
             foreach (var field in TbsFields(root).Skip(7))
             {
-                if (field.TagNumber == ContextConstructed(3) && field.Children.Count == 1 && field.Children[0].TagNumber == (int)Tag.Sequence)
+                if (IsContextConstructed(field, 3) && field.Children.Count == 1 && field.Children[0].Is(Tag.Sequence))
                     return field.Children[0].Children;
             }
             return [];
@@ -141,10 +142,10 @@ internal static class InternalExtensions
                 return []; // no attributes
             foreach (var attribute in info.Children[3].Children)
             {
-                if (attribute is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+                if (attribute is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
                     && IsOid(attribute.Children[0], _extensionRequestSequence)
-                    && attribute.Children[1] is { TagNumber: (int)Tag.Set, Children.Count: >= 1 } values
-                    && values.Children[0].TagNumber == (int)Tag.Sequence)
+                    && attribute.Children[1] is { TagClass: 0, TagNumber: (int)Tag.Set, Children.Count: >= 1 } values
+                    && values.Children[0].Is(Tag.Sequence))
                 {
                     return values.Children[0].Children;
                 }
@@ -169,10 +170,10 @@ internal static class InternalExtensions
 
     /// <summary>Whether <paramref name="tag"/> has the shape of an Extension.</summary>
     public static bool IsExtension(ITag tag)
-        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 2 or 3 }
-           && tag.Children[0].TagNumber == (int)Tag.ObjectIdentifier
-           && (tag.Children.Count == 2 || tag.Children[1].TagNumber == (int)Tag.Boolean)
-           && GetExtensionValue(tag).TagNumber == (int)Tag.OctetString;
+        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 or 3 }
+           && tag.Children[0].Is(Tag.ObjectIdentifier)
+           && (tag.Children.Count == 2 || tag.Children[1].Is(Tag.Boolean))
+           && GetExtensionValue(tag).Is(Tag.OctetString);
 
     /// <summary>
     /// The extnValue OCTET STRING of an extension: <c>SEQUENCE { extnID, critical BOOLEAN DEFAULT FALSE, extnValue }</c>,
@@ -218,7 +219,7 @@ internal static class InternalExtensions
 
     /// <summary>The KeyUsage BIT STRING of a key usage extension, or <see langword="null"/>.</summary>
     public static ITag? GetKeyUsageBitStringTag(this ITag tag)
-        => GetExtensionContent(tag) is { TagNumber: (int)Tag.BitString, Children.Count: 0 } bits ? bits : null;
+        => GetExtensionContent(tag) is { TagClass: 0, TagNumber: (int)Tag.BitString, Children.Count: 0 } bits ? bits : null;
     #endregion
 
     #region Content
@@ -241,9 +242,9 @@ internal static class InternalExtensions
     }
 
     public static bool IsOid(ITag tag, byte[] oid)
-        => tag.TagNumber == (int)Tag.ObjectIdentifier && tag.Content.SequenceEqual(oid);
+        => tag.Is(Tag.ObjectIdentifier) && tag.Content.SequenceEqual(oid);
 
-    public static bool IsSET(ITag t) => t.TagNumber == (int)Tag.Set;
+    public static bool IsSET(ITag t) => t.Is(Tag.Set);
 
     public static bool IsOidNullOrEmpty(string? oid)
     {
@@ -321,8 +322,8 @@ internal static class InternalExtensions
     public static bool TryGetAttributeTypeAndValue(ITag attribute, out ITag type, out ITag value)
     {
         type = value = attribute;
-        if (attribute is not { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
-            || attribute.Children[0].TagNumber != (int)Tag.ObjectIdentifier)
+        if (attribute is not { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+            || !attribute.Children[0].Is(Tag.ObjectIdentifier))
         {
             return false;
         }

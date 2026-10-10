@@ -74,8 +74,9 @@ public class ChildrenListTests
     [Fact]
     public void ParsedContainer_CanAlsoGetContent()
     {
-        // [0] rather than SEQUENCE: Sequence reports IsConstructed = true whatever it holds.
-        var tag = Asn1Serializer.Deserialize(H("A0 03 02 01 05"));
+        // An encapsulating OCTET STRING: it reports IsConstructed from what it holds, unlike tags that keep their
+        // identifier's constructed bit.
+        var tag = Asn1Serializer.Deserialize(H("04 03 02 01 05"));
         Assert.True(tag.IsConstructed);
 
         tag.Content = [0x01];

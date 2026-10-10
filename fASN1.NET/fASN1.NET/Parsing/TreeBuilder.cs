@@ -27,7 +27,7 @@ internal static class TreeBuilder
         {
             foreach (ref readonly var node in nodes)
             {
-                var tag = tagFactory.Create(node.Identifier);
+                var tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
                 if (!TryFillContent(ref source, tag, node, ref failure))
                     return false;
 

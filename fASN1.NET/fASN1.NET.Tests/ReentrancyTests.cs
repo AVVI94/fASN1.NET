@@ -42,10 +42,10 @@ public class ReentrancyTests
     {
         private readonly DefaultTagFactory _inner = new();
 
-        public ITag Create(int tag, byte[]? content = null)
+        public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
         {
             Assert.True(Asn1Serializer.TryDeserialize(other, out _, out var error), error);
-            return _inner.Create(tag, content);
+            return _inner.Create(tagClass, isConstructed, tagNumber, content);
         }
     }
 }

@@ -3,23 +3,27 @@
 namespace fASN1.NET.Factory;
 
 /// <summary>
-/// Creates the <see cref="ITag"/> for an identifier byte. Pass a custom factory to the deserializer to use your own
+/// Creates the <see cref="ITag"/> for an identifier. Pass a custom factory to the deserializer to use your own
 /// tag classes. The parser assumes that a tag created for a given identifier always has the same
-/// <see cref="ITag.IsConstructed"/>, <see cref="ITag.IsUniversal"/> and <see cref="ITag.TagNumber"/>.
+/// <see cref="ITag.IsConstructed"/>, <see cref="ITag.TagClass"/> and <see cref="ITag.TagNumber"/>.
 /// </summary>
 public interface ITagFactory
 {
     /// <summary>
-    /// Creates an instance of <see cref="ITag"/> based on the provided tag number.
+    /// Creates the tag for an identifier.
     /// </summary>
-    /// <param name="tag">The tag value.</param>
-    /// <param name="content">The content bytes.</param>
+    /// <param name="tagClass">The class: 0 universal, 1 application, 2 context-specific, 3 private.</param>
+    /// <param name="isConstructed">Whether the identifier has the constructed bit.</param>
+    /// <param name="tagNumber">The tag number within the class, 0 or more.</param>
+    /// <param name="content">The content bytes, if known; the parser sets content after creating the tag.</param>
     /// <returns>An instance of <see cref="ITag"/>.</returns>
-    ITag Create(int tag, byte[]? content = null);
+    ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null);
 }
 
 /// <summary>
-/// Creates the built-in tag class for each identifier byte, and <see cref="Unknown"/> for universal tags it has no class for.
+/// Creates the built-in tag class for each identifier, and <see cref="Unknown"/> for universal tags it has no class
+/// for: universal numbers without a class here, and the forms a type cannot have (a primitive SEQUENCE, a constructed
+/// INTEGER, a constructed string).
 /// </summary>
 public sealed class DefaultTagFactory : ITagFactory
 {
@@ -27,12 +31,18 @@ public sealed class DefaultTagFactory : ITagFactory
     internal static DefaultTagFactory Instance { get; } = new();
 
     /// <inheritdoc/>
-    public ITag Create(int tag, byte[]? content = null)
+    public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
     {
-        var cls = tag >> 6;
-        return cls switch
+        return tagClass switch
         {
-            0 => (Tag)tag switch
+            0 when isConstructed => (Tag)tagNumber switch
+            {
+                Tag.Sequence => new Sequence(),
+                Tag.Set => new Set(),
+                Tag.EmbeddedPDV => new EmbeddedPdv(),
+                _ => new Unknown(tagClass, tagNumber, isConstructed, content),
+            },
+            0 => (Tag)tagNumber switch
             {
                 Tag.Eoc => new Eoc(),
                 Tag.Boolean => new BooleanTag(content: content),
@@ -45,10 +55,7 @@ public sealed class DefaultTagFactory : ITagFactory
                 Tag.External => new External(content: content),
                 Tag.Real => new Real(content: content),
                 Tag.Enumerated => new Enumerated(content: content),
-                Tag.EmbeddedPDV => new EmbeddedPdv(),
                 Tag.UTF8String => new Utf8String(content: content),
-                Tag.Sequence => new Sequence(),
-                Tag.Set => new Set(),
                 Tag.NumericString => new NumericString(content: content),
                 Tag.PrintableString => new PrintableString(content: content),
                 Tag.TeletexString => new TeletexString(content: content),
@@ -61,19 +68,19 @@ public sealed class DefaultTagFactory : ITagFactory
                 Tag.GeneralString => new GeneralString(content: content),
                 Tag.UniversalString => new UniversalString(content: content),
                 Tag.BMPString => new BMPString(content: content),
-                _ => new Unknown(tag)
+                _ => new Unknown(tagClass, tagNumber, isConstructed, content),
             },
-            1 => new Application(tag),
-            2 => (tag & 0x1F) switch
+            1 => new Application(tagNumber, isConstructed, content),
+            2 => tagNumber switch
             {
-                0 => new ContextSpecific_0(tag),
-                1 => new ContextSpecific_1(tag),
-                2 => new ContextSpecific_2(tag),
-                3 => new ContextSpecific_3(tag),
-                _ => new ContextSpecificTag(tag)
+                0 => new ContextSpecific_0(isConstructed, content),
+                1 => new ContextSpecific_1(isConstructed, content),
+                2 => new ContextSpecific_2(isConstructed, content),
+                3 => new ContextSpecific_3(isConstructed, content),
+                _ => new ContextSpecificTag(tagNumber, isConstructed, content),
             },
-            3 => new Private(tag),
-            _ => new Unknown(tag)
+            3 => new Private(tagNumber, isConstructed, content),
+            _ => new Unknown(tagClass, tagNumber, isConstructed, content),
         };
     }
 }

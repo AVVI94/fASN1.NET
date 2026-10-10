@@ -6,8 +6,11 @@ namespace fASN1.NET.Parsing;
 /// </summary>
 internal struct ScannedNode
 {
-    /// <summary>The identifier byte; the tag factory turns it into a tag.</summary>
+    /// <summary>The first identifier byte: class, constructed bit, and the tag number when it is below 31.</summary>
     public int Identifier;
+
+    /// <summary>The tag number, also when it took several identifier bytes.</summary>
+    public int TagNumber;
 
     /// <summary>Offset of the first content byte.</summary>
     public long ContentStart;

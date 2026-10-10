@@ -1,9 +1,8 @@
 namespace fASN1.NET.Tags;
 
 /// <summary>
-/// Universal tags, by the <see cref="ITag.TagNumber"/> their tag classes report. For the constructed types
-/// (<see cref="Sequence"/>, <see cref="Set"/>, <see cref="EmbeddedPDV"/>) that is the identifier byte,
-/// including the constructed bit 0x20; for the others it is the tag number.
+/// Universal types by tag number, as <see cref="ITag.TagNumber"/> reports it for a tag of class 0. The number alone
+/// does not identify a universal type: <c>[16]</c> also has number 16. Use <see cref="Extensions.Is"/> to check both.
 /// </summary>
 public enum Tag
 {
@@ -30,13 +29,13 @@ public enum Tag
     /// <summary>ENUMERATED (universal 10).</summary>
     Enumerated = 0x0A,
     /// <summary>EMBEDDED PDV (universal 11), always constructed.</summary>
-    EmbeddedPDV = 0x2B,
+    EmbeddedPDV = 0x0B,
     /// <summary>UTF8String (universal 12).</summary>
     UTF8String = 0x0C,
     /// <summary>SEQUENCE (universal 16), always constructed.</summary>
-    Sequence = 0x30,
+    Sequence = 0x10,
     /// <summary>SET (universal 17), always constructed.</summary>
-    Set = 0x31,
+    Set = 0x11,
     /// <summary>NumericString (universal 18).</summary>
     NumericString = 0x12,
     /// <summary>PrintableString (universal 19).</summary>

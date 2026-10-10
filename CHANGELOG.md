@@ -20,20 +20,31 @@ unsupported by design: only version 3 can carry extensions.
 
 ### Breaking changes
 
+Tag identity:
+- `ITag.TagNumber` is the tag number within its class for every tag (16 for SEQUENCE, 0 for `[0]`, 1000 for
+  `[1000]`); it used to be the identifier byte for some classes (SEQUENCE was 48, `[0]` was 160). `Tag.Sequence`,
+  `Tag.Set` and `Tag.EmbeddedPDV` are 16, 17 and 11. As the number alone no longer identifies a universal type
+  (`[16]` also has 16), use the new `tag.Is(Tag.Sequence)` instead of comparing `TagNumber` with a `Tag` value.
+- Multi-byte tag numbers (31 and up, X.690 §8.1.2.4) are read and written; they used to be rejected.
+- `ITagFactory.Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content)` replaces
+  `Create(int identifier, byte[]? content)`.
+- `ContextSpecific_0` to `ContextSpecific_3` take `isConstructed` instead of an identifier byte;
+  `ContextSpecificTag`, `Application` and `Private` take the tag number and `isConstructed`, and `Unknown` also the
+  class. These tags report `IsConstructed` from their identifier, so a parsed empty `A0 00` is constructed.
+
 Parsing:
 - An OCTET STRING is read as encapsulated children only when every length inside it is in DER form and every SET
   inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
-- Input that used to parse into a wrong tree now fails with an error: multi-byte tag numbers, an element crossing
+- Input that used to parse into a wrong tree now fails with an error: an element crossing
   the end of its container, a missing end-of-contents marker, `00` with a non-zero length inside an
   indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`.
 - `TryDeserialize` always gives an error message when it returns `false`. An exception from a custom tag factory or
   from the stream propagates out of `Deserialize`.
 - `ITag.Children` of a parsed tag is an `IList<ITag>` that is not a `List<ITag>`; it is still fully mutable.
-- Every built-in tag derives from the new public `TagBase`. `TagNumber` of `Application`, `Private` and `Unknown`
-  tags is the identifier byte (it was 0). `EmbeddedPdv.TagNumber` and `Tag.EmbeddedPDV` are `0x2B` (they were 10).
+- Every built-in tag derives from the new public `TagBase`.
 
 Writing:
-- `Serialize` throws `ArgumentException` for a tag number that does not fit one identifier byte and for an element
+- `Serialize` throws `ArgumentException` for a class outside 0–3 or a negative tag number, and for an element
   that has both content and children (the content used to be dropped). An element with children gets the
   constructed bit, except a universal BIT STRING or OCTET STRING; a BIT STRING with children gets its leading
   unused-bits byte. The children of every SET are written in DER order (X.690 §11.6).
@@ -41,7 +52,7 @@ Writing:
 - `UTCTime(DateTime)` and `GeneralizedTime(DateTime)` write DER: UTC with `Z`, invariant culture, and for
   GeneralizedTime a fraction of a second only when there is one. `UTCTime` throws for years outside 1950–2049.
 - `BitString(byte[])` derives the unused-bits count from the trailing zero bits; it used to be reversed.
-  `DefaultTagFactory.Create(3, content)` keeps the content as given instead of adding a second unused-bits byte.
+  `DefaultTagFactory.Create(0, false, 3, content)` keeps the content as given instead of adding a second unused-bits byte.
 - `OidEncoder.GetString` and `GetBytes` throw `ArgumentException` for invalid input instead of returning a wrong OID.
   Text arcs must be decimal numbers without sign or leading zeros. New: `TryGetString`, `TryGetBytes`.
 

@@ -1,5 +1,6 @@
 using System.Buffers;
 using fASN1.NET.Factory;
+using fASN1.NET.Tags;
 
 namespace fASN1.NET.Parsing;
 
@@ -42,10 +43,22 @@ internal readonly struct TagTraitsTable
         {
             ref var traits = ref _traits[identifier];
             if (!traits.IsKnown)
-                traits = TagTraits.Of(_factory.Create(identifier), identifier);
+                traits = TagTraits.Of(Create(_factory, identifier, identifier & Ber.TAG_NUMBER_MASK), identifier);
             return traits;
         }
     }
+
+    /// <summary>
+    /// Traits of an element: from the table when the tag number fits the first identifier byte, otherwise from a tag
+    /// created for it, as the table is indexed by that byte alone. Multi-byte tag numbers are rare, so the allocation
+    /// does not matter.
+    /// </summary>
+    public TagTraits ForElement(int identifier, int tagNumber)
+        => tagNumber < Ber.TAG_NUMBER_MASK ? this[identifier] : TagTraits.Of(Create(_factory, identifier, tagNumber), identifier);
+
+    /// <summary>Asks <paramref name="factory"/> for the tag of a first identifier byte and tag number.</summary>
+    public static ITag Create(ITagFactory factory, int identifier, int tagNumber)
+        => factory.Create(identifier >> 6, (identifier & Ber.CONSTRUCTED_FLAG) != 0, tagNumber);
 
     public void Dispose()
     {
@@ -57,7 +70,7 @@ internal readonly struct TagTraitsTable
     {
         var traits = new TagTraits[IDENTIFIER_COUNT];
         for (int identifier = 0; identifier < traits.Length; identifier++)
-            traits[identifier] = TagTraits.Of(DefaultTagFactory.Instance.Create(identifier), identifier);
+            traits[identifier] = TagTraits.Of(Create(DefaultTagFactory.Instance, identifier, identifier & Ber.TAG_NUMBER_MASK), identifier);
         return traits;
     }
 }

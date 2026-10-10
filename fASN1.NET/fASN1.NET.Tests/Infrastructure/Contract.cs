@@ -90,11 +90,11 @@ internal static class Contract
         private readonly DefaultTagFactory _inner = new();
         private int _calls;
 
-        public ITag Create(int tag, byte[]? content = null)
+        public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
         {
             if (++_calls == throwOnCall)
                 throw new InvalidOperationException($"factory failure on call {throwOnCall}");
-            return _inner.Create(tag, content);
+            return _inner.Create(tagClass, isConstructed, tagNumber, content);
         }
     }
 }

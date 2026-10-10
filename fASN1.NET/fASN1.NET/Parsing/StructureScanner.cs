@@ -117,11 +117,9 @@ internal ref struct StructureScanner<TSource>
                 ? new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart)
                 : new ParseFailure(ParseFailureKind.UnexpectedEndOfData, elementStart));
         }
-        if ((identifier & Ber.TAG_NUMBER_MASK) == Ber.TAG_NUMBER_MASK)
-        {
-            // The tag number continues in the following bytes; reading them as the length would misplace every later element.
-            return Fail(new ParseFailure(ParseFailureKind.MultiByteTagNumber, elementStart));
-        }
+        var tagNumber = identifier & Ber.TAG_NUMBER_MASK;
+        if (tagNumber == Ber.TAG_NUMBER_MASK && !TryReadMultiByteTagNumber(elementStart, out tagNumber))
+            return ElementScanResult.Failed;
         if (!TryReadLength(elementStart, out var contentLength, out var isDerLength))
             return ElementScanResult.Failed;
         if (_source.Position > CurrentLimit)
@@ -141,11 +139,12 @@ internal ref struct StructureScanner<TSource>
                 _openElements.Last.HasEndOfContentsChild = true;
         }
 
-        var traits = _traits[identifier];
+        var traits = _traits.ForElement(identifier, tagNumber);
         var contentStart = _source.Position;
         var nodeIndex = _nodes.Add(new ScannedNode
         {
             Identifier = identifier,
+            TagNumber = tagNumber,
             ContentStart = contentStart,
             ContentLength = contentLength ?? 0,
             IsIndefiniteLength = contentLength is null,
@@ -262,6 +261,38 @@ internal ref struct StructureScanner<TSource>
         return ElementScanResult.Succeeded;
     }
 
+    /// <summary>
+    /// Reads a tag number of 31 or more, which follows the first identifier byte in base 128, most significant digit
+    /// first, with the top bit set on every byte but the last (X.690 §8.1.2.4).
+    /// </summary>
+    /// <param name="elementStart">Offset of the identifier, for error messages.</param>
+    /// <param name="tagNumber">The tag number.</param>
+    private bool TryReadMultiByteTagNumber(long elementStart, out int tagNumber)
+    {
+        tagNumber = 0;
+        long number = 0;
+        int octet;
+        do
+        {
+            octet = _source.ReadByte();
+            if (octet == -1)
+                return FailRead(new ParseFailure(ParseFailureKind.IdentifierTruncated, elementStart));
+            // A leading 0x80 only adds a zero digit (§8.1.2.4.2 c).
+            if (number == 0 && octet == Ber.LONG_FORM_LENGTH_FLAG)
+                return FailRead(new ParseFailure(ParseFailureKind.NonMinimalTagNumber, elementStart));
+            number = (number << 7) | (uint)(octet & ~Ber.LONG_FORM_LENGTH_FLAG);
+            if (number > int.MaxValue)
+                return FailRead(new ParseFailure(ParseFailureKind.TagNumberTooLarge, elementStart));
+        }
+        while ((octet & Ber.LONG_FORM_LENGTH_FLAG) != 0);
+
+        // Numbers up to 30 must use the single-byte form (§8.1.2.2).
+        if (number < Ber.TAG_NUMBER_MASK)
+            return FailRead(new ParseFailure(ParseFailureKind.NonMinimalTagNumber, elementStart));
+        tagNumber = (int)number;
+        return true;
+    }
+
     /// <summary>Reads the length bytes that follow an identifier.</summary>
     /// <param name="elementStart">Offset of the identifier, for error messages.</param>
     /// <param name="contentLength">The content length, or <see langword="null"/> for indefinite length.</param>
@@ -272,7 +303,7 @@ internal ref struct StructureScanner<TSource>
         isDer = false;
         var first = _source.ReadByte();
         if (first == -1)
-            return FailLength(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
+            return FailRead(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
 
         if ((first & Ber.LONG_FORM_LENGTH_FLAG) == 0)
         {
@@ -285,14 +316,14 @@ internal ref struct StructureScanner<TSource>
         if (octetCount == 0)
             return true; // indefinite length
         if (octetCount > Ber.MAX_LENGTH_OCTETS)
-            return FailLength(new ParseFailure(ParseFailureKind.TooManyLengthOctets, elementStart, octetCount));
+            return FailRead(new ParseFailure(ParseFailureKind.TooManyLengthOctets, elementStart, octetCount));
 
         long length = 0;
         for (int i = 0; i < octetCount; i++)
         {
             var octet = _source.ReadByte();
             if (octet == -1)
-                return FailLength(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
+                return FailRead(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
             if (i == 0)
                 isDer = octet != 0; // a leading zero octet means fewer octets would do
             length = (length << 8) | (uint)octet;
@@ -301,7 +332,7 @@ internal ref struct StructureScanner<TSource>
 
         // Content is read into a byte[], so lengths are limited to what an array can index.
         if (length > int.MaxValue)
-            return FailLength(new ParseFailure(ParseFailureKind.LengthTooLarge, elementStart));
+            return FailRead(new ParseFailure(ParseFailureKind.LengthTooLarge, elementStart));
 
         contentLength = length;
         return true;
@@ -376,7 +407,8 @@ internal ref struct StructureScanner<TSource>
         return ElementScanResult.Failed;
     }
 
-    private bool FailLength(ParseFailure failure)
+    /// <summary>Records why reading an identifier or length failed.</summary>
+    private bool FailRead(ParseFailure failure)
     {
         _failure = failure;
         return false;
