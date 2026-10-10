@@ -1,0 +1,31 @@
+namespace fASN1.NET.Parsing;
+
+/// <summary>
+/// One node of the final tree, as found by <see cref="StructureScanner{TSource}"/>. Nodes are stored in
+/// pre-order, so the children of a node are the <see cref="ChildCount"/> subtrees that follow it.
+/// </summary>
+internal struct ScannedNode
+{
+    /// <summary>The identifier byte; the tag factory turns it into a tag.</summary>
+    public int Identifier;
+
+    /// <summary>Offset of the first content byte.</summary>
+    public long ContentStart;
+
+    /// <summary>Content length; meaningful for leaves.</summary>
+    public long ContentLength;
+
+    public bool IsIndefiniteLength;
+
+    /// <summary>The content was read as child elements (possibly none), not as bytes.</summary>
+    public bool ContentIsChildren;
+
+    /// <summary>Number of direct children when <see cref="ContentIsChildren"/> is set.</summary>
+    public int ChildCount;
+
+    /// <summary>
+    /// An OCTET STRING whose content was tried as child elements and did not parse as such; it is a leaf
+    /// holding the raw bytes.
+    /// </summary>
+    public bool IsRolledBackProbe;
+}

@@ -78,7 +78,7 @@ public static partial class Asn1Serializer
     {
         if (data is null)
             throw new ArgumentNullException(nameof(data));
-        var source = new ArrayByteSource(data);
+        var source = new ByteArraySource(data);
         return TryDeserializeCore(ref source, tagFactory, out tag, out error);
     }
 
@@ -112,7 +112,7 @@ public static partial class Asn1Serializer
                 tag = null;
                 return false;
             }
-            var source = new StreamByteSource(stream);
+            var source = new StreamSource(stream);
             return TryDeserializeCore(ref source, tagFactory, out tag, out error);
         }
         catch (Exception ex) //just to be safe
@@ -143,7 +143,7 @@ public static partial class Asn1Serializer
     {
         if (data is null)
             throw new ArgumentNullException(nameof(data));
-        var source = new ArrayByteSource(data);
+        var source = new ByteArraySource(data);
         return DeserializeCore(ref source, tagFactory, nameof(data));
     }
 
@@ -171,7 +171,7 @@ public static partial class Asn1Serializer
     {
         if (stream is null)
             throw new ArgumentException("Stream is null or empty.", nameof(stream));
-        var source = new StreamByteSource(stream);
+        var source = new StreamSource(stream);
         return DeserializeCore(ref source, tagFactory, nameof(stream));
     }
 
@@ -186,8 +186,7 @@ public static partial class Asn1Serializer
                 tag = null;
                 return false;
             }
-            tag = Asn1Parser.Parse(ref source, tagFactory, out error);
-            return tag is not null;
+            return Asn1Parser.TryParse(ref source, tagFactory, out tag, out error);
         }
         catch (Exception ex) //just to be safe
         {
@@ -202,7 +201,9 @@ public static partial class Asn1Serializer
     {
         if (source.Length == 0)
             throw new ArgumentException("Stream is null or empty.", paramName);
-        return Asn1Parser.Parse(ref source, tagFactory, out var error) ?? throw new Asn1DeserializationException(error ?? "Unknown deserialization error");
+        return Asn1Parser.TryParse(ref source, tagFactory, out var tag, out var error)
+            ? tag
+            : throw new Asn1DeserializationException(error);
     }
     #endregion
 }

@@ -139,12 +139,12 @@ public abstract class TagBase : ITag
     };
 
     /// <summary>The child at <paramref name="index"/>, without creating a list.</summary>
-    internal ITag ChildAt(int index) => _payload is ITag[] parsed ? parsed[index] : Children[index];
+    internal ITag GetChild(int index) => _payload is ITag[] parsed ? parsed[index] : Children[index];
 
     /// <summary>
     /// Gives a freshly parsed tag, which has neither content nor children, an array to hold its children.
     /// </summary>
-    internal ITag[] SetParsedChildren(int count)
+    internal ITag[] InitializeChildArray(int count)
     {
         var children = new ITag[count];
         _payload = children;
@@ -152,10 +152,10 @@ public abstract class TagBase : ITag
     }
 
     /// <summary>Number of children of any tag, without creating a list for built-in tags.</summary>
-    internal static int CountChildren(ITag tag) => tag is TagBase b ? b.ChildCount : tag.Children.Count;
+    internal static int GetChildCount(ITag tag) => tag is TagBase b ? b.ChildCount : tag.Children.Count;
 
     /// <summary>A child of any tag, without creating a list for built-in tags.</summary>
-    internal static ITag ChildAt(ITag tag, int index) => tag is TagBase b ? b.ChildAt(index) : tag.Children[index];
+    internal static ITag GetChild(ITag tag, int index) => tag is TagBase b ? b.GetChild(index) : tag.Children[index];
 
     private sealed class ExternalWithContent(IList<ITag> children, byte[] content)
     {
