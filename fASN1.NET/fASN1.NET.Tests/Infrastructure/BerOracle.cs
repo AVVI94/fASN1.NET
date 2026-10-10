@@ -31,6 +31,17 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
         if (rules == AsnEncodingRules.DER && tagClass == 0 && isConstructed && number == 17)
             new AsnReader(src.Slice(0, consumed).ToArray(), AsnEncodingRules.DER).ReadSetOf();
 
+        if (tagClass == 0 && isConstructed && IsStringType(number))
+        {
+            // DER has no constructed strings, so inside an OCTET STRING one makes the probe fail.
+            if (rules == AsnEncodingRules.DER)
+                throw new AsnContentException("Constructed string in DER");
+            var joined = Join(src.Slice(0, consumed), number);
+            if (number == 4 && TryReadEncapsulated(joined, out var joinedChildren))
+                return new OracleNode(tagClass, false, number, [], joinedChildren);
+            return new OracleNode(tagClass, false, number, joined, []);
+        }
+
         if (isConstructed)
             return new OracleNode(tagClass, isConstructed, number, [], ReadAll(content, rules));
 
@@ -38,6 +49,43 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
             return new OracleNode(tagClass, isConstructed, number, [], encapsulated);
 
         return new OracleNode(tagClass, isConstructed, number, content.ToArray(), []);
+    }
+
+    /// <summary>BIT STRING, OCTET STRING, the restricted character strings and the times may be constructed in BER.</summary>
+    private static bool IsStringType(int number) => number is 3 or 4 or 7 or 12 or (>= 18 and <= 28) or 30;
+
+    /// <summary>Appends the bits of every primitive BIT STRING segment of <paramref name="encoded"/>, without its unused-bits byte.</summary>
+    private static void AppendSegmentData(ReadOnlySpan<byte> encoded, List<byte> data)
+    {
+        AsnDecoder.ReadEncodedValue(encoded, AsnEncodingRules.BER, out var offset, out var length, out _);
+        if ((encoded[0] & 0x20) == 0)
+        {
+            data.AddRange(encoded.Slice(offset + 1, length - 1).ToArray());
+            return;
+        }
+        var content = encoded.Slice(offset, length);
+        while (!content.IsEmpty && !(content[0] == 0 && content[1] == 0))
+        {
+            AsnDecoder.ReadEncodedValue(content, AsnEncodingRules.BER, out _, out _, out var consumed);
+            AppendSegmentData(content.Slice(0, consumed), data);
+            content = content.Slice(consumed);
+        }
+    }
+
+    /// <summary>The value of a constructed string, as System.Formats.Asn1 joins it.</summary>
+    private static byte[] Join(ReadOnlySpan<byte> encoded, int number)
+    {
+        var tag = new Asn1Tag(System.Formats.Asn1.TagClass.Universal, number, isConstructed: true);
+        if (number == 3)
+        {
+            // .NET validates the segments, but clears the unused bits; like a primitive BIT STRING, the value keeps
+            // them as encoded, so the bits are taken from the segments themselves.
+            AsnDecoder.ReadBitString(encoded, AsnEncodingRules.BER, out var unusedBits, out _, tag);
+            var data = new List<byte>();
+            AppendSegmentData(encoded, data);
+            return [(byte)unusedBits, .. data];
+        }
+        return AsnDecoder.ReadOctetString(encoded, AsnEncodingRules.BER, out _, tag);
     }
 
     private static List<OracleNode> ReadAll(ReadOnlySpan<byte> content, AsnEncodingRules rules)

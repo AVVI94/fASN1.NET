@@ -31,4 +31,20 @@ internal struct ScannedNode
     /// holding the raw bytes.
     /// </summary>
     public bool IsRolledBackProbe;
+
+    /// <summary>
+    /// A constructed string whose segments are joined: its content is the <see cref="SegmentCount"/> segments from
+    /// <see cref="FirstSegment"/>, after the unused-bits byte <see cref="UnusedBits"/> for a BIT STRING, and
+    /// <see cref="ContentLength"/> is their total. <see cref="Identifier"/> is the primitive form.
+    /// </summary>
+    public bool IsJoinedString;
+
+    /// <summary>Index of the first segment of a joined string.</summary>
+    public int FirstSegment;
+
+    /// <summary>Number of segments of a joined string.</summary>
+    public int SegmentCount;
+
+    /// <summary>Unused bits in the last segment of a joined BIT STRING.</summary>
+    public int UnusedBits;
 }

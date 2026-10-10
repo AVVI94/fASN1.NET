@@ -11,4 +11,10 @@ internal enum OpenElementKind
     /// rolls the element back to a leaf holding the raw bytes.
     /// </summary>
     EncapsulationProbe,
+
+    /// <summary>
+    /// A constructed string: its children are segments whose contents are joined into one value. A segment may
+    /// itself be constructed; an element of this kind without a node is such a nested segment.
+    /// </summary>
+    ConstructedString,
 }

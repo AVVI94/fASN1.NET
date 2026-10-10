@@ -40,6 +40,9 @@ internal struct OpenElement
     /// </summary>
     public long PreviousChildStart, PreviousChildEnd;
 
+    /// <summary>For <see cref="OpenElementKind.ConstructedString"/>: the tag number its segments must have.</summary>
+    public int SegmentTagNumber;
+
     /// <summary>Number of direct children read so far.</summary>
     public int ChildCount;
 

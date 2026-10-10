@@ -110,7 +110,7 @@ public class ParsedStructureTests
     [InlineData("C2 01 07")]
     [InlineData("E4 03 02 01 05")]
     [InlineData("0D 01 7F")]
-    [InlineData("24 03 04 01 41")]
+    [InlineData("22 03 04 01 41")]
     [InlineData("BE 03 02 01 05")]
     public void NonStandardClasses_SerializeBackToTheSameBytes(string hex)
     {
@@ -292,9 +292,9 @@ public class ParsedStructureTests
     [Fact]
     public void Indefinite_EndsOnlyAtEndOfContentsBytes()
     {
-        // A constructed OCTET STRING (0x24) is an Unknown tag; it is an ordinary child and must not end the SEQUENCE.
-        var unknown = new Expected(typeof(Unknown), 4, "Unknown_4", 0, true, true, false, [], [Octets("41")]);
-        AssertTree("30 80 24 80 04 01 41 00 00 02 01 05 00 00", Seq(unknown, Int("05")));
+        // A constructed INTEGER (0x22) is an Unknown tag; it is an ordinary child and must not end the SEQUENCE.
+        var unknown = new Expected(typeof(Unknown), 2, "Unknown_2", 0, true, true, false, [], [Octets("41")]);
+        AssertTree("30 80 22 80 04 01 41 00 00 02 01 05 00 00", Seq(unknown, Int("05")));
     }
 
     [Fact]

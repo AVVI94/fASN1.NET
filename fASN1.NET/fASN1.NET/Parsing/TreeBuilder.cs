@@ -18,7 +18,7 @@ internal static class TreeBuilder
     private const int INITIAL_PARENT_CAPACITY = 16;
 
     /// <summary>Builds the tree; <paramref name="failure"/> is only written when this fails.</summary>
-    public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
+    public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ReadOnlySpan<ContentSegment> segments, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
         root = null;
@@ -27,9 +27,18 @@ internal static class TreeBuilder
         {
             foreach (ref readonly var node in nodes)
             {
-                var tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
-                if (!TryFillContent(ref source, tag, node, ref failure))
-                    return false;
+                ITag? tag;
+                if (node.IsJoinedString)
+                {
+                    if (!TryBuildJoinedString(ref source, node, segments.Slice(node.FirstSegment, node.SegmentCount), tagFactory, out tag, ref failure))
+                        return false;
+                }
+                else
+                {
+                    tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
+                    if (!TryFillContent(ref source, tag, node, ref failure))
+                        return false;
+                }
 
                 if (parents.Count == 0)
                     root = tag;
@@ -48,6 +57,66 @@ internal static class TreeBuilder
         {
             parents.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Creates the tag of a constructed string with its segments joined. A joined OCTET STRING is parsed as a
+    /// primitive OCTET STRING with that value would be, so encapsulated content is read the same way.
+    /// </summary>
+    private static bool TryBuildJoinedString<TSource>(ref TSource source, in ScannedNode node, ReadOnlySpan<ContentSegment> segments,
+                                                      ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, ref ParseFailure failure)
+        where TSource : struct, IByteSource
+    {
+        tag = null;
+        var isOctetString = node.Identifier == (int)Tag.OctetString;
+        // For an OCTET STRING, room for the identifier and the longest length in front of the content.
+        var offset = isOctetString ? 6 : 0;
+        var buffer = new byte[offset + node.ContentLength];
+        if (node.Identifier == (int)Tag.BitString)
+            buffer[offset++] = (byte)node.UnusedBits;
+        foreach (var segment in segments)
+        {
+            if (!TryReadInto(ref source, buffer, offset, segment.Start, segment.Length))
+            {
+                failure = new ParseFailure(ParseFailureKind.ContentReadIncomplete, segment.Start, tagName: TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber).TagName);
+                return false;
+            }
+            offset += (int)segment.Length;
+        }
+
+        if (!isOctetString)
+        {
+            tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
+            tag.Content = buffer;
+            return true;
+        }
+
+        // Write 04, the length and nothing else before the content, and parse that as a document of its own.
+        var length = (int)node.ContentLength;
+        var lengthOctets = length < 0x80 ? 0 : length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
+        var start = 6 - 2 - lengthOctets;
+        buffer[start] = (byte)Tag.OctetString;
+        buffer[start + 1] = (byte)(lengthOctets == 0 ? length : Ber.LONG_FORM_LENGTH_FLAG | lengthOctets);
+        for (int i = lengthOctets; i > 0; i--, length >>= 8)
+            buffer[start + 1 + i] = (byte)length;
+        var encoded = new ByteArraySource(buffer) { Position = start };
+        return Asn1Parser.TryParse(ref encoded, tagFactory, out tag, out _);
+    }
+
+    /// <summary>Reads <paramref name="length"/> bytes at <paramref name="start"/> into <paramref name="destination"/>.</summary>
+    private static bool TryReadInto<TSource>(ref TSource source, byte[] destination, int offset, long start, long length)
+        where TSource : struct, IByteSource
+    {
+        source.Position = start;
+        var end = offset + (int)length;
+        while (offset < end)
+        {
+            var count = source.Read(destination, offset, end - offset);
+            if (count == 0)
+                return false;
+            offset += count;
+        }
+        return true;
     }
 
     /// <summary>Gives a leaf its content bytes; <paramref name="failure"/> is only written when this fails.</summary>

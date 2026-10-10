@@ -131,7 +131,7 @@ public class FuzzTests
 internal static class BerGenerator
 {
     private static readonly byte[] _primitiveTags = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x0A, 0x0C, 0x13, 0x16, 0x17, 0x18, 0x1E, 0x80, 0x81, 0x85, 0x41, 0xC3, 0x0D, 0x00];
-    private static readonly byte[] _constructedTags = [0x30, 0x31, 0xA0, 0xA1, 0xA3, 0xA7, 0x61, 0xE2, 0x24, 0x2C];
+    private static readonly byte[] _constructedTags = [0x30, 0x31, 0xA0, 0xA1, 0xA3, 0xA7, 0x61, 0xE2, 0x22];
 
     public static byte[] Document(Random rng) => Node(rng, depth: 0);
 
@@ -142,7 +142,44 @@ internal static class BerGenerator
             return Primitive(rng, depth);
         if (roll < 55)
             return Encapsulating(rng, depth);
+        if (roll < 65)
+            return ConstructedString(rng);
         return Constructed(rng, depth);
+    }
+
+    /// <summary>A BER constructed string: BIT STRING, OCTET STRING, UTF8String or IA5String split into segments.</summary>
+    private static byte[] ConstructedString(Random rng)
+    {
+        var (tag, segmentTag) = rng.Next(4) switch
+        {
+            0 => ((byte)0x23, (byte)0x03),
+            1 => ((byte)0x24, (byte)0x04),
+            2 => ((byte)0x2C, (byte)0x04),
+            _ => ((byte)0x36, (byte)0x04),
+        };
+        return Tlv([tag], Segments(rng, segmentTag, levels: 2), rng, allowIndefinite: true);
+    }
+
+    /// <summary>Segments, some of them constructed in turn, and now and then an invalid one.</summary>
+    private static byte[] Segments(Random rng, byte segmentTag, int levels)
+    {
+        var body = new List<byte>();
+        int count = rng.Next(4);
+        for (int i = 0; i < count; i++)
+        {
+            if (levels > 0 && rng.Next(5) == 0)
+            {
+                body.AddRange(Tlv([(byte)(segmentTag | 0x20)], Segments(rng, segmentTag, levels - 1), rng, allowIndefinite: true));
+                continue;
+            }
+            var data = new byte[rng.Next(6)];
+            rng.NextBytes(data);
+            if (segmentTag == 0x03)
+                data = [(byte)(rng.Next(10) == 0 ? rng.Next(8) : 0), .. data]; // unused bits
+            var identifier = rng.Next(20) == 0 ? (byte)0x02 : segmentTag;
+            body.AddRange(Tlv([identifier], data, rng, allowIndefinite: false));
+        }
+        return body.ToArray();
     }
 
     private static byte[] Primitive(Random rng, int depth)

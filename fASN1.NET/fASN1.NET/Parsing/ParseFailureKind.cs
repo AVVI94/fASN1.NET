@@ -20,4 +20,7 @@ internal enum ParseFailureKind
     LengthTooLarge,
     NonDerLengthInOctetString,
     SetNotInDerOrderInOctetString,
+    InvalidStringSegment,
+    InvalidBitStringSegment,
+    ConstructedStringInOctetString,
 }

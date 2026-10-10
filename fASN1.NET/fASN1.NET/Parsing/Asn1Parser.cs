@@ -39,7 +39,7 @@ internal static class Asn1Parser
 
             var end = scanner.Position;
             var failure = default(ParseFailure);
-            if (!TreeBuilder.TryBuild(ref source, scanner.Nodes, tagFactory, out tag, ref failure))
+            if (!TreeBuilder.TryBuild(ref source, scanner.Nodes, scanner.Segments, tagFactory, out tag, ref failure))
             {
                 tag = null;
                 error = failure.ToMessage();

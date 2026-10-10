@@ -28,6 +28,9 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
         ParseFailureKind.LengthTooLarge => $"Length of the element at offset {offset} is too large",
         ParseFailureKind.NonDerLengthInOctetString => $"Length of the element at offset {offset} is not in DER form, so the OCTET STRING holding it is kept as raw bytes",
         ParseFailureKind.SetNotInDerOrderInOctetString => $"The element at offset {offset} is out of DER order in its SET, so the OCTET STRING holding it is kept as raw bytes",
+        ParseFailureKind.InvalidStringSegment => $"Segment at offset {offset} of a constructed string is not {tagName}",
+        ParseFailureKind.InvalidBitStringSegment => $"BIT STRING segment at offset {offset} has an invalid unused-bits count; only the last segment may have unused bits",
+        ParseFailureKind.ConstructedStringInOctetString => $"The element at offset {offset} is a constructed string, which DER does not allow, so the OCTET STRING holding it is kept as raw bytes",
         _ => "Unknown deserialization error",
     };
 }

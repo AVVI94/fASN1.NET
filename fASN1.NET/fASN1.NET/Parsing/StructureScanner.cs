@@ -1,4 +1,5 @@
 using System;
+using fASN1.NET.Tags;
 
 namespace fASN1.NET.Parsing;
 
@@ -31,10 +32,14 @@ internal ref struct StructureScanner<TSource>
     private readonly TagTraitsTable _traits;
     private PooledList<OpenElement> _openElements;
     private PooledList<ScannedNode> _nodes;
+    private PooledList<ContentSegment> _segments;
     private ParseFailure _failure;
 
     /// <summary>Offset of the identifier of the element that completed last.</summary>
     private long _completedElementStart;
+
+    /// <summary>Unused bits of the last segment read of the constructed BIT STRING being scanned.</summary>
+    private int _stringUnusedBits;
 
     /// <param name="source">The input, positioned at the element to scan. The scanner reads a copy.</param>
     /// <param name="traits">Traits of the tags the factory creates.</param>
@@ -44,12 +49,17 @@ internal ref struct StructureScanner<TSource>
         _traits = traits;
         _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
         _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
+        _segments = new PooledList<ContentSegment>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
         _failure = default;
         _completedElementStart = 0;
+        _stringUnusedBits = 0;
     }
 
     /// <summary>The nodes of the final tree in pre-order, once <see cref="TryScan"/> has succeeded.</summary>
     public readonly ReadOnlySpan<ScannedNode> Nodes => _nodes.AsSpan();
+
+    /// <summary>The segments of the joined strings among <see cref="Nodes"/>.</summary>
+    public readonly ReadOnlySpan<ContentSegment> Segments => _segments.AsSpan();
 
     /// <summary>Why <see cref="TryScan"/> failed.</summary>
     public readonly ParseFailure Failure => _failure;
@@ -94,6 +104,7 @@ internal ref struct StructureScanner<TSource>
     {
         _openElements.Dispose();
         _nodes.Dispose();
+        _segments.Dispose();
     }
 
     /// <summary>
@@ -138,8 +149,13 @@ internal ref struct StructureScanner<TSource>
             if (_openElements.Count > 0 && _openElements.Last.Kind == OpenElementKind.EncapsulationProbe)
                 _openElements.Last.HasEndOfContentsChild = true;
         }
+        if (_openElements.Count > 0 && _openElements.Last.Kind == OpenElementKind.ConstructedString)
+            return ScanStringSegment(elementStart, identifier, contentLength);
 
         var traits = _traits.ForElement(identifier, tagNumber);
+        if (traits.StringSegmentTagNumber != 0)
+            return OpenConstructedString(elementStart, identifier, tagNumber, contentLength, traits.StringSegmentTagNumber);
+
         var contentStart = _source.Position;
         var nodeIndex = _nodes.Add(new ScannedNode
         {
@@ -226,6 +242,9 @@ internal ref struct StructureScanner<TSource>
     /// </summary>
     private ElementScanResult CloseElement(in OpenElement element, bool childrenSucceeded)
     {
+        if (element.Kind == OpenElementKind.ConstructedString)
+            return CloseConstructedString(element, childrenSucceeded);
+
         _completedElementStart = element.ElementStart;
         ref var node = ref _nodes[element.NodeIndex];
         var keepsChildren = element.Kind == OpenElementKind.Constructed
@@ -245,6 +264,111 @@ internal ref struct StructureScanner<TSource>
         node.IsRolledBackProbe = true;
         _source.Position = element.ContentStart;
         return SkipContent(_traits[node.Identifier].TagName, element.ContentStart, element.ContentLength);
+    }
+
+    /// <summary>
+    /// Starts a constructed string. It becomes one leaf node holding the joined content of its segments, recorded
+    /// as the primitive form, so the factory creates the same tag as for a primitive string.
+    /// </summary>
+    private ElementScanResult OpenConstructedString(long elementStart, int identifier, int tagNumber, long? contentLength, int segmentTagNumber)
+    {
+        // DER has no constructed strings, and Serialize writes the joined value as a primitive string, which would
+        // change the bytes of the OCTET STRING holding it.
+        if (_openElements.Count > 0 && _openElements.Last.RequiresDer)
+            return Fail(new ParseFailure(ParseFailureKind.ConstructedStringInOctetString, elementStart));
+
+        var contentStart = _source.Position;
+        var nodeIndex = _nodes.Add(new ScannedNode
+        {
+            Identifier = identifier & ~Ber.CONSTRUCTED_FLAG,
+            TagNumber = tagNumber,
+            ContentStart = contentStart,
+            IsJoinedString = true,
+            FirstSegment = _segments.Count,
+        });
+        _stringUnusedBits = 0;
+        return OpenChildren(new OpenElement
+        {
+            Kind = OpenElementKind.ConstructedString,
+            NodeIndex = nodeIndex,
+            ElementStart = elementStart,
+            ContentStart = contentStart,
+            ContentLength = contentLength,
+            SegmentTagNumber = segmentTagNumber,
+        });
+    }
+
+    /// <summary>
+    /// Reads one segment of the innermost constructed string: a primitive segment adds its content to the string,
+    /// a constructed one (allowed in BER) is opened and its segments are added in turn. Segments get no nodes.
+    /// </summary>
+    private ElementScanResult ScanStringSegment(long elementStart, int identifier, long? contentLength)
+    {
+        var segmentTagNumber = _openElements.Last.SegmentTagNumber;
+        var segmentName = segmentTagNumber == (int)Tag.BitString ? "a BIT STRING" : "an OCTET STRING";
+        if ((identifier & ~Ber.CONSTRUCTED_FLAG) != segmentTagNumber)
+            return Fail(new ParseFailure(ParseFailureKind.InvalidStringSegment, elementStart, tagName: segmentName));
+
+        var contentStart = _source.Position;
+        if ((identifier & Ber.CONSTRUCTED_FLAG) != 0)
+        {
+            return OpenChildren(new OpenElement
+            {
+                Kind = OpenElementKind.ConstructedString,
+                NodeIndex = -1,
+                ElementStart = elementStart,
+                ContentStart = contentStart,
+                ContentLength = contentLength,
+                SegmentTagNumber = segmentTagNumber,
+            });
+        }
+
+        _completedElementStart = elementStart;
+        var skipped = SkipContent(segmentName, contentStart, contentLength);
+        if (skipped != ElementScanResult.Succeeded)
+            return skipped;
+
+        var segment = new ContentSegment { Start = contentStart, Length = contentLength!.Value };
+        if (segmentTagNumber == (int)Tag.BitString)
+        {
+            // Each BIT STRING segment starts with its own unused-bits count; only the last may be non-zero (§8.6.4).
+            if (_stringUnusedBits != 0 || segment.Length == 0)
+                return Fail(new ParseFailure(ParseFailureKind.InvalidBitStringSegment, elementStart));
+            var resume = _source.Position;
+            _source.Position = contentStart;
+            _stringUnusedBits = _source.ReadByte();
+            _source.Position = resume;
+            if (_stringUnusedBits > 7 || (segment.Length == 1 && _stringUnusedBits != 0))
+                return Fail(new ParseFailure(ParseFailureKind.InvalidBitStringSegment, elementStart));
+            segment.Start++;
+            segment.Length--;
+        }
+        _segments.Add(segment);
+        return ElementScanResult.Succeeded;
+    }
+
+    /// <summary>Closes a constructed string, or a constructed segment of one; the outermost gets its joined length.</summary>
+    private ElementScanResult CloseConstructedString(in OpenElement element, bool childrenSucceeded)
+    {
+        _completedElementStart = element.ElementStart;
+        if (!childrenSucceeded)
+            return ElementScanResult.Failed;
+        if (element.NodeIndex < 0)
+            return ElementScanResult.Succeeded; // a nested segment: its segments already belong to the outer string
+
+        ref var node = ref _nodes[element.NodeIndex];
+        node.SegmentCount = _segments.Count - node.FirstSegment;
+        long length = element.SegmentTagNumber == (int)Tag.BitString ? 1 : 0;
+        foreach (var segment in _segments.AsSpan().Slice(node.FirstSegment))
+        {
+            length += segment.Length;
+        }
+        if (length > int.MaxValue)
+            return Fail(new ParseFailure(ParseFailureKind.LengthTooLarge, element.ElementStart));
+
+        node.ContentLength = length;
+        node.UnusedBits = element.SegmentTagNumber == (int)Tag.BitString ? _stringUnusedBits : 0;
+        return ElementScanResult.Succeeded;
     }
 
     /// <summary>Checks that a leaf's content is present and moves past it.</summary>

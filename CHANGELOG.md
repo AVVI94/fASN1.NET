@@ -33,6 +33,10 @@ Tag identity:
   class. These tags report `IsConstructed` from their identifier, so a parsed empty `A0 00` is constructed.
 
 Parsing:
+- BER constructed strings (a BIT STRING, OCTET STRING, character string or time split into segments, as CER does for
+  values over 1000 bytes) are joined into one value: the tree has the same tag as for the primitive encoding, and a
+  joined OCTET STRING is read for encapsulated elements like a primitive one. They used to be `Unknown` tags with
+  the segments as children and no content. `Serialize` writes them in the primitive DER form.
 - An OCTET STRING is read as encapsulated children only when every length inside it is in DER form and every SET
   inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
 - Input that used to parse into a wrong tree now fails with an error: an element crossing
