@@ -189,9 +189,9 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// A definite-length element whose children are being read.
+    /// An element whose children are being read.
     /// </summary>
-    private sealed class ContainerFrame(FrameKind kind, ITag tag, long start, long childrenStart, long length)
+    private sealed class ContainerFrame(FrameKind kind, ITag tag, long start, long childrenStart, long? length)
     {
         public FrameKind Kind { get; } = kind;
 
@@ -206,63 +206,117 @@ public static partial class Asn1Serializer
         /// </summary>
         public long ChildrenStart { get; } = childrenStart;
 
-        /// <summary>Declared content length.</summary>
-        public long Length { get; } = length;
+        /// <summary>
+        /// Children are read until an EOC (or a failed child) instead of up to <see cref="End"/>.
+        /// </summary>
+        public bool IsIndefinite { get; } = length is null;
 
-        /// <summary>Offset where the children must end: <see cref="ChildrenStart"/> + <see cref="Length"/>.</summary>
-        public long End => ChildrenStart + Length;
+        /// <summary>
+        /// Declared content length. For an indefinite-length frame it is set, once the children are read,
+        /// to the number of bytes consumed from <see cref="ChildrenStart"/>, including the EOC.
+        /// </summary>
+        public long? Length { get; set; } = length;
+
+        /// <summary>Offset where definite-length children must end.</summary>
+        public long End => ChildrenStart + Length!.Value;
     }
 
     /// <summary>
-    /// Parses one element and all of its descendants. Definite-length containers and encapsulation probes
-    /// are tracked on an explicit stack instead of the call stack, so nesting depth does not consume call stack space.
+    /// Parses one element and all of its descendants. Every element whose children are being read is a
+    /// <see cref="ContainerFrame"/> on an explicit stack, so nesting depth does not consume call stack space.
     /// </summary>
     private static ITag? DeserializeInternal(Stream stream, ref string? error, ITagFactory tagFactory)
     {
         var frames = new Stack<ContainerFrame>();
         var needElement = true;
         ITag? completed = null;
+        ContainerFrame? abortedFrame = null;
         while (true)
         {
-            if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
+            try
             {
-                // A frame was opened; continue below with its first child.
-            }
-            else
-            {
-                // `completed` is a finished element, or null when it failed. Hand it to its parent.
-                if (frames.Count == 0)
+                if (abortedFrame is not null)
                 {
-                    return completed;
-                }
-                var parent = frames.Peek();
-                if (completed is null)
-                {
-                    // A failed child ends the frame unsuccessfully, rewound to its first child.
-                    stream.Position = parent.ChildrenStart;
-                    completed = EndFrame(stream, ref error, frames.Pop(), success: false);
+                    // An exception ended this indefinite-length frame's children; see the catch below.
+                    var frame = abortedFrame;
+                    abortedFrame = null;
+                    completed = EndFrame(stream, ref error, frame, success: false);
                     needElement = false;
+                }
+
+                if (needElement && BeginElement(stream, ref error, tagFactory, frames, out completed))
+                {
+                    // A frame was opened; continue below with its first child.
+                }
+                else
+                {
+                    // `completed` is a finished element, or null when it failed. Hand it to its parent.
+                    if (frames.Count == 0)
+                    {
+                        return completed;
+                    }
+                    var parent = frames.Peek();
+                    if (parent.IsIndefinite)
+                    {
+                        if (completed is null or { IsEoc: true })
+                        {
+                            // EOC ends the children. So does a failed child, which is dropped without an error.
+                            frames.Pop();
+                            parent.Length = stream.Position - parent.ChildrenStart;
+                            completed = EndFrame(stream, ref error, parent, success: true);
+                            needElement = false;
+                            continue;
+                        }
+                    }
+                    else if (completed is null)
+                    {
+                        // A failed child ends the frame unsuccessfully, rewound to its first child.
+                        stream.Position = parent.ChildrenStart;
+                        completed = EndFrame(stream, ref error, frames.Pop(), success: false);
+                        needElement = false;
+                        continue;
+                    }
+                    parent.Tag.Children.Add(completed);
+                }
+
+                var top = frames.Peek();
+                if (top.IsIndefinite || stream.Position < top.End)
+                {
+                    needElement = true;
                     continue;
                 }
-                parent.Tag.Children.Add(completed);
-            }
 
-            var top = frames.Peek();
-            if (stream.Position < top.End)
-            {
-                needElement = true;
-                continue;
+                frames.Pop();
+                needElement = false;
+                var exact = stream.Position == top.End;
+                if (!exact)
+                {
+                    error = $"Content size is not correct for container at offset {top.ChildrenStart}";
+                }
+                completed = EndFrame(stream, ref error, top, exact);
             }
-
-            frames.Pop();
-            needElement = false;
-            var exact = stream.Position == top.End;
-            if (!exact)
+            catch (Exception) when (HasIndefiniteFrame(frames))
             {
-                error = $"Content size is not correct for container at offset {top.ChildrenStart}";
+                // The innermost indefinite-length frame absorbs the exception: everything opened inside
+                // it is abandoned, and the frame itself ends unsuccessfully on the next iteration.
+                while (!frames.Peek().IsIndefinite)
+                {
+                    frames.Pop();
+                }
+                abortedFrame = frames.Pop();
+                error = $"Exception while decoding undefined length content at offset {abortedFrame.ChildrenStart}";
             }
-            completed = EndFrame(stream, ref error, top, exact);
         }
+    }
+
+    private static bool HasIndefiniteFrame(Stack<ContainerFrame> frames)
+    {
+        foreach (var frame in frames)
+        {
+            if (frame.IsIndefinite)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -285,15 +339,10 @@ public static partial class Asn1Serializer
             return false;
         }
         var start = stream.Position;
-        if (length is null)
-        {
-            completed = ParseBodyRecursive(stream, ref error, tagFactory, tag, tagNumber, length, start);
-            return false;
-        }
 
         if (tag.IsConstructed || (tagNumber & 0x20) != 0)
         {
-            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Container, tag, start, start, length.Value), out completed);
+            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Container, tag, start, start, length), out completed);
         }
 
         if (tag.IsUniversal && tag.TagNumber is (int)Tag.BitString or (int)Tag.OctetString)
@@ -305,7 +354,7 @@ public static partial class Asn1Serializer
                 completed = FinishElement(stream, ref error, tag, start, length);
                 return false;
             }
-            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Probe, tag, start, stream.Position, length.Value), out completed);
+            return OpenFrame(stream, ref error, frames, new ContainerFrame(FrameKind.Probe, tag, start, stream.Position, length), out completed);
         }
 
         completed = FinishElement(stream, ref error, tag, start, length);
@@ -313,13 +362,13 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Checks that the frame's children fit inside the stream and inside the element itself, then pushes it.
-    /// When they do not fit, the frame is ended unsuccessfully at once.
+    /// Pushes the frame. A definite-length frame is first checked to fit inside the stream and inside the
+    /// element itself; when it does not, it is ended unsuccessfully at once.
     /// </summary>
     private static bool OpenFrame(Stream stream, ref string? error, Stack<ContainerFrame> frames, ContainerFrame frame, out ITag? completed)
     {
         // For a BIT STRING probe the children start one byte late, so End always passes Start + Length.
-        if (frame.End > stream.Length || frame.End > frame.Start + frame.Length)
+        if (!frame.IsIndefinite && (frame.End > stream.Length || frame.End > frame.Start + frame.Length))
         {
             error = $"Container at offset {frame.ChildrenStart} has a length of {frame.Length}, which is past the end of the stream";
             completed = EndFrame(stream, ref error, frame, success: false);
@@ -393,127 +442,6 @@ public static partial class Asn1Serializer
             tag.Content = content;
         }
         return tag;
-    }
-
-    private static ITag? DeserializeRecursive(Stream stream, ref string? error, ITagFactory tagFactory)
-    {
-        var tagNumber = stream.ReadByte();
-        if (tagNumber == -1)
-        {
-            return null;
-        }
-        var tag = tagFactory.Create(tagNumber);
-        long? length = DecodeLength(stream, out var valid);
-        if (!valid)
-        {
-            return null;
-        }
-        return ParseBodyRecursive(stream, ref error, tagFactory, tag, tagNumber, length, stream.Position);
-    }
-
-    private static ITag? ParseBodyRecursive(Stream stream, ref string? error, ITagFactory tagFactory, ITag tag, int tagNumber, long? length, long start)
-    {
-        var tagMaxOffsetInStream = start + length;
-        if (tag.IsConstructed || (tagNumber & 0x20) != 0)
-        {
-            if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory, tagMaxOffsetInStream))
-            {
-                return null;
-            }
-        }
-        else if (tag.IsUniversal && tag.TagNumber is (int)Tag.BitString or (int)Tag.OctetString)
-        {
-            if (tag.TagNumber is (int)Tag.BitString && stream.ReadByte() != 0)
-            {
-                //throw new InvalidDataException("BitString with unused bits cannot encapsulate");
-                error = "BitString with unused bits cannot encapsulate";
-                Cleanup();
-            }
-            else
-            {
-                if (!GetChildren(tag.Children, stream, ref length, ref error, tagFactory, tagMaxOffsetInStream))
-                {
-                    Cleanup();
-                }
-                else
-                {
-                    foreach (var item in tag.Children)
-                    {
-                        if (item.IsEoc)
-                        {
-                            Cleanup();
-                            error = "EOC is not supposed to be actual content";
-                            break;
-                        }
-                        //throw new InvalidDataException("EOC is not supposed to be actual content");
-                    }
-                }
-            }
-
-            void Cleanup()
-            {
-                tag.Children.Clear();
-                stream.Position = start;
-            }
-        }
-
-        return FinishElement(stream, ref error, tag, start, length);
-    }
-
-    static bool GetChildren(IList<ITag> tags, Stream stream, ref long? length, ref string? error, ITagFactory tagFactory, long? parentContainerEnd)
-    {
-        //List<ITag> tags = [];
-        var start = stream.Position;
-        if (length is not null)
-        {
-            var end = stream.Position + length.Value;
-            if (end > stream.Length || end > parentContainerEnd)
-            {
-                error = $"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream";
-                return false;
-                //throw new InvalidDataException($"Container at offset {stream.Position} has a length of {length}, which is past the end of the stream");
-            }
-            while (stream.Position < end)
-            {
-                var child = DeserializeRecursive(stream, ref error, tagFactory);
-                if (child is null)
-                {
-                    stream.Position = start;
-                    return false;
-                }
-                else
-                    tags.Add(child);
-            }
-            if (stream.Position != end)
-            {
-                error = $"Content size is not correct for container at offset {start}";
-                return false;
-                //throw new InvalidDataException($"Content size is not correct for container at offset {start}");
-            }
-            return true;
-        }
-
-        try
-        {
-
-            while (true)
-            {
-                var tag = DeserializeRecursive(stream, ref error, tagFactory);
-                if (tag is null or { IsEoc: true })
-                {
-                    break;
-                }
-                tags.Add(tag);
-            }
-            length = stream.Position - start;
-            return true;
-        }
-        catch (Exception)
-        {
-            error = $"Exception while decoding undefined length content at offset {start}";
-            return false;
-            //throw new Exception($"Exception while decoding undefined length content at offset {start}", ex);
-        }
     }
 
     static int? DecodeLength(Stream data, out bool valid)
