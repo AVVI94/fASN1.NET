@@ -11,6 +11,12 @@ Features
 * Extract key usage, extended key usage, SAN (Subject Alternative Name), and other certificate details.
 * Support for long string content handling, including wrapping and word wrapping.
 
+The certificate helpers support X.509 version 3 certificates (RFC 5280) and PKCS#10 certificate requests (RFC 2986);
+version 1 and 2 certificates are not supported by design.
+
+> **Upgrading from 1.x?** Version 2.0 fixes several security issues and changes some results; see the
+> [changelog](CHANGELOG.md) for the breaking changes.
+
 ### ASN.1 references
 
 * [Wikipedia ASN.1](https://en.wikipedia.org/wiki/Abstract_Syntax_Notation_One)
@@ -29,6 +35,8 @@ Features
     * [Get Subject Directory Attributes](#get-subject-director-attributes-sda-from-a-certificate)
 
 - [Performance](#performance) 
+
+- [Changelog](CHANGELOG.md)
 
 ## Installation
 
@@ -108,7 +116,7 @@ var root = new Sequence([
     new Sequence([
         new ObjectIdentifier([0,1,35,45,55,127,126]),
         new Utf8String(Encoding.UTF8.GetBytes("Random text")),
-        new ContextSpecific_0(children: [
+        new ContextSpecific_0(0xA0, children: [
             new BitString(content: [123,125,222,255,0,1,4])
             ])
     ])
@@ -129,7 +137,7 @@ Sequence
  |  | ObjectIdentifier 0.0.1.35.45.55.127.126
  |  | UTF8String Random text
  |  | [0]
- |  |  | BitString 011110110111110111011110111111110000000000000001000
+ |  |  | BitString 011110110111110111011110111111110000000000000001000001
 ```
 
 ### Get Subject Director Attributes (SDA) from a certificate
