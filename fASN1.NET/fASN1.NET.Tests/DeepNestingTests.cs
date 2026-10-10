@@ -114,10 +114,11 @@ public class DeepNestingTests
     }
 
     [Fact]
-    public void DeepSubject_FindsTheSubjectItemAtTheBottom()
+    public void DeepAttributeValue_DoesNotStopTheSubjectSearch()
     {
-        // SET { SEQUENCE { OID commonName, UTF8String "deep" } } under DEPTH SEQUENCEs, as the subject of a request.
-        var subject = BuildDefinite(DEPTH, 0x30, Convert.FromHexString("310D300B06035504030C0464656570"));
+        // Subject { O = <DEPTH nested SEQUENCEs>, CN = "deep" } of a request: the search must not descend into values.
+        var organization = Wrap(0x31, Wrap(0x30, Convert.FromHexString("060355040A"), BuildDefinite(DEPTH, 0x30, [0x05, 0x00])));
+        var subject = Wrap(0x30, organization, Convert.FromHexString("310D300B06035504030C0464656570"));
         var algorithm = Convert.FromHexString("300D06092A864886F70D0101010500");
         var request = Wrap(0x30,
             Wrap(0x30, [0x02, 0x01, 0x00], subject, Wrap(0x30, algorithm, [0x03, 0x01, 0x00]), [0xA0, 0x00]),

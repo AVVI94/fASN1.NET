@@ -1,13 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using fASN1.NET.ContentParsing;
 using fASN1.NET.Oid;
 using fASN1.NET.Tags;
 
 namespace fASN1.NET;
 
+/// <summary>
+/// Navigation of X.509 certificates (RFC 5280) and PKCS#10 certification requests (RFC 2986) in a parsed tree.
+/// Every method tolerates malformed trees: a missing or unexpected element gives <see langword="null"/>, an empty
+/// list or <see langword="false"/>, never an exception.
+/// </summary>
 internal static class InternalExtensions
 {
     public static readonly byte[] _version0Sequence = [0x00];
@@ -17,6 +20,7 @@ internal static class InternalExtensions
     public static readonly byte[] _sanOidSequence = OID.GetOrCreate(OID.SUBJECT_ALT_NAME).ByteValue;
     public static readonly byte[] _icaUserIdSequence = OID.GetOrCreate(OID.ICA_USER_ID).ByteValue;
     public static readonly byte[] _icaIkMpsvSequence = OID.GetOrCreate(OID.ICA_IK_MPSV).ByteValue;
+    public static readonly byte[] _icaCertInterconnectionSequence = OID.GetOrCreate(OID.ICA_CERT_INTERCONNECTION).ByteValue;
     public static readonly byte[] _extensionRequestSequence = OID.GetOrCreate(OID.EXTENSION_REQUEST).ByteValue;
     public static readonly byte[] _extKeyUsageSequence = OID.GetOrCreate(OID.EXT_KEY_USAGE).ByteValue;
     public static readonly byte[] _authorityKeyIdentifierOidSequence = OID.GetOrCreate(OID.AUTHORITY_KEY_IDENTIFIER).ByteValue;
@@ -29,70 +33,143 @@ internal static class InternalExtensions
     public static readonly byte[] _dateOfBirthOidSequence = OID.GetOrCreate(OID.DATE_OF_BIRTH).ByteValue;
     public static readonly byte[] _placeOfBirthOidSequence = OID.GetOrCreate(OID.PLACE_OF_BIRTH).ByteValue;
 
-    public static bool HasRequestedExtensions(ITag topLevelCertRequestTag)
-    {
-        if (topLevelCertRequestTag.Children[0].Children[topLevelCertRequestTag.Children[0].Children.Count - 1].TagNumber != 160)
-        {
-            return false;
-        }
+    /// <summary>Identifier byte of a constructed context-specific tag [<paramref name="number"/>].</summary>
+    private static int ContextConstructed(int number) => 0xA0 | number;
 
-        var attributes = GetRequestAttributesTag(topLevelCertRequestTag);
-        if (attributes is null)
-        {
-            return false;
-        }
-        foreach (var attribute in attributes.Children)
-        {
-            if (attribute.Children.Count == 0)
-            {
-                continue;
-            }
-            if (attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier && attribute.Children[0].Content.SequenceEqual(_extensionRequestSequence))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    public static bool HasCertExtensionsInternal(ITag topLevelCertificateTag)
+    #region Structure
+    /// <summary>
+    /// Whether <paramref name="tag"/> is an X.509 v3 certificate (RFC 5280 §4.1):
+    /// <c>SEQUENCE { tbsCertificate, signatureAlgorithm AlgorithmIdentifier, signatureValue BIT STRING }</c> with
+    /// <c>tbsCertificate ::= SEQUENCE { version [0] EXPLICIT INTEGER (2), serialNumber INTEGER, signature
+    /// AlgorithmIdentifier, issuer Name, validity SEQUENCE { notBefore, notAfter }, subject Name,
+    /// subjectPublicKeyInfo, ... }</c>.
+    /// </summary>
+    /// <remarks>
+    /// Version 1 and 2 certificates are not supported by design; only version 3 can carry extensions.
+    /// </remarks>
+    public static bool IsV3Certificate(ITag tag)
     {
-        return topLevelCertificateTag.Children[0].Children[topLevelCertificateTag.Children[0].Children.Count - 1].TagNumber == 163;
+        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence } tbs || tbs.Children.Count < 7)
+            return false;
+
+        var version = tbs.Children[0];
+        return version.TagNumber == ContextConstructed(0)
+               && version.Children.Count == 1
+               && version.Children[0] is { TagNumber: (int)Tag.Integer } versionNumber
+               && versionNumber.Content.SequenceEqual(_version2Sequence)
+               && tbs.Children[1].TagNumber == (int)Tag.Integer
+               && IsAlgorithmIdentifier(tbs.Children[2])
+               && IsName(tbs.Children[3])
+               && tbs.Children[4] is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+               && IsName(tbs.Children[5])
+               && IsSubjectPublicKeyInfo(tbs.Children[6]);
     }
 
-    public static IList<ITag> GetCretificateExtensionsInternal(ITag topLevelTag)
+    /// <summary>
+    /// Whether <paramref name="tag"/> is a PKCS#10 certification request (RFC 2986 §4):
+    /// <c>SEQUENCE { certificationRequestInfo, signatureAlgorithm AlgorithmIdentifier, signature BIT STRING }</c>
+    /// with <c>certificationRequestInfo ::= SEQUENCE { version INTEGER (0), subject Name, subjectPKInfo,
+    /// attributes [0] IMPLICIT SET OF Attribute }</c>.
+    /// </summary>
+    /// <remarks>
+    /// The attributes field is required, even when empty. Checking every field keeps a version 1 certificate with
+    /// serial number 0, whose first fields look the same, from being taken for a request.
+    /// </remarks>
+    public static bool IsCertificationRequest(ITag tag)
     {
-        return topLevelTag.Children[0].Children[topLevelTag.Children[0].Children.Count - 1].Children[0].Children;
+        if (!IsSignedSequence(tag) || tag.Children[0] is not { TagNumber: (int)Tag.Sequence, Children.Count: 4 } info)
+            return false;
+
+        return info.Children[0] is { TagNumber: (int)Tag.Integer } version
+               && version.Content.SequenceEqual(_version0Sequence)
+               && IsName(info.Children[1])
+               && IsSubjectPublicKeyInfo(info.Children[2])
+               && info.Children[3].TagNumber == ContextConstructed(0);
     }
-    public static IList<ITag> GetRequestedExtensions(ITag topLevelTag)
+
+    private static bool IsSignedSequence(ITag tag)
+        => tag.TagNumber == (int)Tag.Sequence
+           && tag.Children.Count == 3
+           && IsAlgorithmIdentifier(tag.Children[1])
+           && tag.Children[2] is { TagNumber: (int)Tag.BitString, Children.Count: 0 };
+
+    /// <summary><c>AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY OPTIONAL }</c></summary>
+    private static bool IsAlgorithmIdentifier(ITag tag)
+        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 1 or 2 }
+           && tag.Children[0].TagNumber == (int)Tag.ObjectIdentifier;
+
+    /// <summary><c>Name ::= SEQUENCE OF RelativeDistinguishedName</c>, each a SET.</summary>
+    private static bool IsName(ITag tag)
+        => tag.TagNumber == (int)Tag.Sequence && tag.Children.All(IsSET);
+
+    /// <summary><c>SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }</c></summary>
+    private static bool IsSubjectPublicKeyInfo(ITag tag)
+        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+           && IsAlgorithmIdentifier(tag.Children[0])
+           && tag.Children[1].TagNumber == (int)Tag.BitString;
+
+    /// <summary>The tbsCertificate fields of a certificate that passed <see cref="IsV3Certificate"/>.</summary>
+    public static IList<ITag> TbsFields(ITag certificate) => certificate.Children[0].Children;
+
+    /// <summary>The subject Name of a request that passed <see cref="IsCertificationRequest"/>.</summary>
+    public static ITag RequestSubject(ITag request) => request.Children[0].Children[1];
+    #endregion
+
+    #region Extensions
+    /// <summary>
+    /// The extensions of a v3 certificate (<c>extensions [3] EXPLICIT Extensions</c> in tbsCertificate), or of a
+    /// request (the extensionRequest attribute, PKCS#9); empty when there are none or the tree is neither.
+    /// </summary>
+    /// <param name="root">The certificate or request.</param>
+    /// <param name="certificatesOnly">Ignore requests.</param>
+    public static IList<ITag> GetExtensions(ITag root, bool certificatesOnly = false)
     {
-        var attributes = GetRequestAttributesTag(topLevelTag);
-        if (attributes is null)
+        if (IsV3Certificate(root))
         {
+            foreach (var field in TbsFields(root).Skip(7))
+            {
+                if (field.TagNumber == ContextConstructed(3) && field.Children.Count == 1 && field.Children[0].TagNumber == (int)Tag.Sequence)
+                    return field.Children[0].Children;
+            }
             return [];
         }
-        var exts = GetExtensions(attributes);
-        if (exts is null)
+        if (!certificatesOnly && IsCertificationRequest(root))
         {
-            return [];
-        }
-        return exts.Children;
-
-        ITag? GetExtensions(ITag attributes)
-        {
-            foreach (var attribute in attributes.Children)
+            // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF value }; extensionRequest has one value.
+            foreach (var attribute in root.Children[0].Children[3].Children)
             {
-                if (attribute.Children.Count == 0)
+                if (attribute is { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+                    && IsOid(attribute.Children[0], _extensionRequestSequence)
+                    && attribute.Children[1] is { TagNumber: (int)Tag.Set, Children.Count: >= 1 } values
+                    && values.Children[0].TagNumber == (int)Tag.Sequence)
                 {
-                    continue;
-                }
-                if (attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier && attribute.Children[0].Content.SequenceEqual(_extensionRequestSequence))
-                {
-                    return attribute.Children[1].Children[0];
+                    return values.Children[0].Children;
                 }
             }
-            return null;
         }
+        return [];
     }
+
+    /// <summary>
+    /// The first extension with the given OID, checked to be
+    /// <c>SEQUENCE { extnID OBJECT IDENTIFIER, critical BOOLEAN DEFAULT FALSE, extnValue OCTET STRING }</c>.
+    /// </summary>
+    public static ITag? FindExtension(ITag root, byte[] oid, bool certificatesOnly = false)
+    {
+        foreach (var extension in GetExtensions(root, certificatesOnly))
+        {
+            if (IsExtension(extension) && IsOid(extension.Children[0], oid))
+                return extension;
+        }
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="tag"/> has the shape of an Extension.</summary>
+    public static bool IsExtension(ITag tag)
+        => tag is { TagNumber: (int)Tag.Sequence, Children.Count: 2 or 3 }
+           && tag.Children[0].TagNumber == (int)Tag.ObjectIdentifier
+           && (tag.Children.Count == 2 || tag.Children[1].TagNumber == (int)Tag.Boolean)
+           && GetExtensionValue(tag).TagNumber == (int)Tag.OctetString;
 
     /// <summary>
     /// The extnValue OCTET STRING of an extension: <c>SEQUENCE { extnID, critical BOOLEAN DEFAULT FALSE, extnValue }</c>,
@@ -100,6 +177,45 @@ internal static class InternalExtensions
     /// </summary>
     public static ITag GetExtensionValue(ITag extension) => extension.Children[extension.Children.Count - 1];
 
+    /// <summary>Whether the extension is marked critical.</summary>
+    public static bool IsCritical(ITag extension)
+        => extension.Children.Count == 3 && extension.Children[1].Content.SequenceEqual(_booleanTrueSequence);
+
+    /// <summary>
+    /// The element encoded in the extnValue of <paramref name="extension"/>. The parser reads extnValue as that
+    /// element when it is in DER form; a value in another BER form stays raw bytes and is decoded here.
+    /// </summary>
+    public static ITag? GetExtensionContent(ITag extension)
+    {
+        var value = GetExtensionValue(extension);
+        if (value.Children.Count == 1)
+            return value.Children[0];
+        if (value.Children.Count == 0 && value.Content.Length > 0
+            && Asn1Serializer.TryDeserialize(value.Content, out var decoded, out _))
+        {
+            return decoded;
+        }
+        return null;
+    }
+
+    /// <summary>The decoded value of the first extension with the given OID.</summary>
+    public static ITag? FindExtensionContent(ITag root, byte[] oid, bool certificatesOnly = false)
+        => FindExtension(root, oid, certificatesOnly) is { } extension ? GetExtensionContent(extension) : null;
+    #endregion
+
+    #region Key usage
+    public static bool IsKeyUsageSequence(this ITag tag)
+        => IsExtension(tag) && IsOid(tag.Children[0], _keyUsageOidSequence);
+
+    public static bool IsKeyUsageCritical(this ITag tag)
+         => tag.IsKeyUsageSequence() && IsCritical(tag);
+
+    /// <summary>The KeyUsage BIT STRING of a key usage extension, or <see langword="null"/>.</summary>
+    public static ITag? GetKeyUsageBitStringTag(this ITag tag)
+        => GetExtensionContent(tag) is { TagNumber: (int)Tag.BitString, Children.Count: 0 } bits ? bits : null;
+    #endregion
+
+    #region Content
     /// <summary>
     /// The content bytes of a primitive element as they were in the input. An OCTET STRING read as encapsulated
     /// children has empty <see cref="ITag.Content"/>; its bytes are those children serialized, which the parser
@@ -118,122 +234,46 @@ internal static class InternalExtensions
         return bytes.ToArray();
     }
 
-    private static ITag? GetRequestAttributesTag(ITag topLevelCertRequestTag)
-    {
-        var certRequestInfo = topLevelCertRequestTag.Children[0];
-        var attributes = certRequestInfo.Children[certRequestInfo.Children.Count - 1];
-        if (attributes.TagNumber != 160)
-        {
-            //not attributes
-            return null;
-        }
-        return attributes;
-    }
+    public static bool IsOid(ITag tag, byte[] oid)
+        => tag.TagNumber == (int)Tag.ObjectIdentifier && tag.Content.SequenceEqual(oid);
 
-    public static bool IsKeyUsageSequence(this ITag tag)
-    // Count 2 or 3: 2 when critical flag is missing (not critical), 3 when critical flag is present
-    => tag.Children.Count is 2 or 3 && tag.Children[0] is { TagNumber: (int)Tag.ObjectIdentifier } oidTag && oidTag.Content.SequenceEqual(_keyUsageOidSequence);
-
-    public static bool IsKeyUsageCritical(this ITag tag)
-         => tag.IsKeyUsageSequence() && tag.Children[1] is { TagNumber: (int)Tag.Boolean } boolTag && boolTag.Content.SequenceEqual(_booleanTrueSequence);
-    public static ITag GetKeyUsageBitStringTag(this ITag tag)
-    => tag.Children[tag.Children.Count - 1].Children[0];
-    public static string GetSetValue(ITag t)
-    {
-        return t.Children[0].Children[1].ContentToString();
-    }
     public static bool IsSET(ITag t) => t.TagNumber == (int)Tag.Set;
+
     public static bool IsOidNullOrEmpty(string? oid)
     {
         return string.IsNullOrWhiteSpace(oid);
     }
-    public static bool IsOidNullOrEmpty(byte[]? oid)
-    {
-        return oid is null or { Length: 0 };
+    #endregion
 
-    }
-
-    public static void AddRange<T>(this IList<T> list, IEnumerable<T> items)
-    {
-        if (list is List<T> l)
-        {
-            l.AddRange(items);
-            return;
-        }
-        foreach (var item in items)
-        {
-            list.Add(item);
-        }
-    }
-
-    public static int PeekByte(this Stream stream)
-    {
-        var value = stream.ReadByte();
-        _ = stream.Seek(-1, SeekOrigin.Current);
-        return value;
-    }
-
+    #region Names
     /// <summary>
-    /// This method attempts to locate the value for the requested OID. It's important to note that a certificate may contain multiple values for the requested OID, and these values are ordered in the 'items' list as they appear in the structure.
+    /// Finds every value of the attribute <paramref name="oid"/> in a Name, in document order.
     /// </summary>
     /// <remarks>
-    /// The OID is matched based on X.509 v3 standards, which means that the OID is expected to have a parent element of type SEQUENCE, which, in turn, should have a parent element of type SET.
-    /// The value is then extracted from the second element of the SEQUENCE element.<br/>
-    /// Example of a correct SET element:
     /// <code>
-    /// SET
-    ///  | SEQUENCE
-    ///  |  | OBJECT_IDENTIFIER 2.5.4.3, commonName, X.520 DN component
-    ///  |  | UTF8String common name value
+    /// Name ::= SEQUENCE OF RelativeDistinguishedName
+    /// RelativeDistinguishedName ::= SET SIZE (1..MAX) OF AttributeTypeAndValue
+    /// AttributeTypeAndValue ::= SEQUENCE { type OBJECT IDENTIFIER, value ANY }
     /// </code>
+    /// Every AttributeTypeAndValue of a multi-valued RDN (such as <c>CN=a+OU=b</c>) is searched. SETs are matched,
+    /// not entered; every other element is searched, so the method also works on trees that hold Names deeper down.
     /// </remarks>
-    /// <param name="tag">Parent tag</param>
-    /// <param name="kind">Subject item kind</param>
-    /// <param name="items">The value</param>
-    /// <returns><see langword="true" /> if any value was found, otherwise <see langword="false" /></returns>
-    public static bool TryGetSubjectItem(this ITag tag, SubjectItemKind kind, out List<string> items)
-    {
-        return TryGetSubjectItem(tag, OidEncoder.GetBytes(kind.ToOidString()), out items);
-    }
-
-    /// <summary>
-    /// This method attempts to locate the value for the requested OID. It's important to note that a certificate may contain multiple values for the requested OID, and these values are ordered in the 'items' list as they appear in the structure.
-    /// </summary>
-    /// <remarks>
-    /// The OID is matched based on X.509 v3 standards, which means that the OID is expected to have a parent element of type SEQUENCE, which, in turn, should have a parent element of type SET.
-    /// The value is then extracted from the second element of the SEQUENCE element.<br/>
-    /// Example of a correct SET element:
-    /// <code>
-    /// SET
-    ///  | SEQUENCE
-    ///  |  | OBJECT_IDENTIFIER 2.5.4.3, commonName, X.520 DN component
-    ///  |  | UTF8String common name value
-    /// </code>
-    /// </remarks>
-    /// <param name="tag">Parent tag</param>
-    /// <param name="oid">Requested OID in byte array representation. <see cref="OidEncoder"/> can be used to convert it from a string representation.</param>
-    /// <param name="items">The value</param>
-    /// <returns><see langword="true" /> if any value was found, otherwise <see langword="false" /></returns>
+    /// <param name="tag">The Name, or an element containing Names.</param>
+    /// <param name="oid">Requested OID in byte array representation. <see cref="OidEncoder"/> can convert it from a string.</param>
+    /// <param name="items">The values, as text.</param>
+    /// <returns><see langword="true" /> if any value was found, otherwise <see langword="false" />.</returns>
     public static bool TryGetSubjectItem(this ITag tag, byte[] oid, out List<string> items)
     {
         items = new List<string>();
-        if (IsOidNullOrEmpty(oid))
-            return false;
-        /*
-         SET
-          | SEQUENCE
-          |  | OBJECT_IDENTIFIER 2.5.4.3, commonName, X.520 DN component
-          |  | UTF8String common name value
-         */
-        if (tag.Children.Count == 0)
+        if (oid is null or { Length: 0 } || tag.Children.Count == 0)
             return false;
 
         // Pre-order walk with an explicit stack, so values come in document order and deep trees cannot overflow
-        // the call stack. SETs are matched, not entered; every other element is searched, the root always.
+        // the call stack.
         var pending = new Stack<ITag>();
-        if (IsMatchingSet(tag, oid))
+        if (IsSET(tag))
         {
-            items.Add(GetSetValue(tag));
+            AddMatchingValues(tag, oid, items);
         }
         PushChildren(pending, tag);
         while (pending.Count > 0)
@@ -241,10 +281,7 @@ internal static class InternalExtensions
             var t = pending.Pop();
             if (IsSET(t))
             {
-                if (IsMatchingSet(t, oid))
-                {
-                    items.Add(GetSetValue(t));
-                }
+                AddMatchingValues(t, oid, items);
             }
             else
             {
@@ -260,12 +297,32 @@ internal static class InternalExtensions
                 pending.Push(t.Children[i]);
             }
         }
-
-        static bool IsMatchingSet(ITag t, byte[] oid)
-            => IsSET(t)
-               && t.Children.Count == 1
-               && t.Children[0] is { TagNumber: (int)Tag.Sequence, Children.Count: >= 2 } attribute
-               && attribute.Children[0].TagNumber == (int)Tag.ObjectIdentifier
-               && attribute.Children[0].Content.SequenceEqual(oid);
     }
+
+    /// <summary>Adds the value of every AttributeTypeAndValue of the RDN <paramref name="set"/> whose type is <paramref name="oid"/>.</summary>
+    private static void AddMatchingValues(ITag set, byte[] oid, List<string> items)
+    {
+        foreach (var attribute in set.Children)
+        {
+            if (TryGetAttributeTypeAndValue(attribute, out var type, out var value) && IsOid(type, oid))
+            {
+                items.Add(value.ContentToString());
+            }
+        }
+    }
+
+    /// <summary>Splits <c>AttributeTypeAndValue ::= SEQUENCE { type OBJECT IDENTIFIER, value ANY }</c>.</summary>
+    public static bool TryGetAttributeTypeAndValue(ITag attribute, out ITag type, out ITag value)
+    {
+        type = value = attribute;
+        if (attribute is not { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+            || attribute.Children[0].TagNumber != (int)Tag.ObjectIdentifier)
+        {
+            return false;
+        }
+        type = attribute.Children[0];
+        value = attribute.Children[1];
+        return true;
+    }
+    #endregion
 }

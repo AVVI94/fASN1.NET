@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Linq;
 using fASN1.NET.ContentParsing;
 using fASN1.NET.Oid;
@@ -14,58 +15,25 @@ namespace fASN1.NET;
 /// <summary>
 /// Reads common fields of X.509 certificates and PKCS#10 certificate requests from a parsed tree.
 /// </summary>
+/// <remarks>
+/// Only version 3 certificates are supported, by design: versions 1 and 2 cannot carry extensions. The
+/// <c>TryGet</c> methods never throw for malformed input; they return <see langword="false"/>.
+/// </remarks>
 public static partial class Extensions
 {
     /// <summary>
-    /// Determines whether the specified tag represents a certificate request.
+    /// Determines whether the specified tag is a PKCS#10 certification request (RFC 2986).
     /// </summary>
     /// <param name="tag">The tag to check.</param>
     /// <returns><see langword="true"/> if the tag represents a certificate request; otherwise, <see langword="false"/>.</returns>
-    public static bool IsCertificateRequest(this ITag tag)
-    {
-        try
-        {
-            return tag.Children.Count == 3
-               && tag.Children[0].Children.Count != 0
-               && tag.Children[0].Children[0].TagNumber == (int)Tag.Integer
-               && tag.Children[0].Children[0].Content.SequenceEqual(_version0Sequence)
-               && tag.Children[1].TagNumber == (int)Tag.Sequence
-               && (tag.Children[1].Children.Count == 1 || tag.Children[1].Children.Count == 2)
-               && tag.Children[1].Children[0].TagNumber == (int)Tag.ObjectIdentifier
-               && tag.Children[2].Children.Count == 0
-               && tag.Children[2].TagNumber == (int)Tag.BitString;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsCertificateRequest(this ITag tag) => IsCertificationRequest(tag);
 
     /// <summary>
-    /// Determines whether the specified tag represents a X.509v3 certificate.
+    /// Determines whether the specified tag is an X.509 version 3 certificate (RFC 5280).
     /// </summary>
     /// <param name="tag">The tag to check.</param>
     /// <returns><see langword="true"/> if the tag represents a X.509v3 certificate; otherwise, <see langword="false"/>.</returns>
-    public static bool IsCertificate(this ITag tag)
-    {
-        try
-        {
-            return tag.Children.Count == 3
-                       && tag.Children[0].Children.Count != 0
-                       && tag.Children[0].Children[0].TagClass == 2
-                       && tag.Children[0].Children[0].Children[0].TagNumber == (int)Tag.Integer
-                       && tag.Children[0].Children[0].Children[0].Content.SequenceEqual(_version2Sequence)
-                       && tag.Children[1].TagNumber == (int)Tag.Sequence
-                       && (tag.Children[1].Children.Count == 1 || tag.Children[1].Children.Count == 2)
-                       && tag.Children[1].Children[0].TagNumber == (int)Tag.ObjectIdentifier
-                       && tag.Children[2].Children.Count == 0
-                       && tag.Children[2].TagNumber == (int)Tag.BitString;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsCertificate(this ITag tag) => IsV3Certificate(tag);
 
     /// <summary>
     /// Attempts to get the extended key usage from the specified X.509v3 certificate tag.
@@ -78,53 +46,47 @@ public static partial class Extensions
         eku = new ExtendedKeyUsage();
         try
         {
-            if (!IsCertificate(certificateTag) || !HasCertExtensionsInternal(certificateTag))
+            // ExtKeyUsageSyntax ::= SEQUENCE SIZE (1..MAX) OF KeyPurposeId (OBJECT IDENTIFIER)
+            if (FindExtensionContent(certificateTag, _extKeyUsageSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence } purposes)
                 return false;
+
             bool ekuFound = false;
-            foreach (var ext in GetCretificateExtensionsInternal(certificateTag))
+            foreach (var e in purposes.Children)
             {
-                if (!ext.Children[0].Content.SequenceEqual(_extKeyUsageSequence))
+                if (e.TagNumber != (int)Tag.ObjectIdentifier)
                     continue;
-                foreach (var e in ext.Children[1].Children[0].Children)
+                ekuFound = true;
+                switch (OidEncoder.GetString(e.Content))
                 {
-                    switch (OID.GetOrCreate(e.Content).Value)
-                    {
-                        case OID.EKU_EMAIL_PROTECTION:
-                            eku.EmailProtection = true;
-                            ekuFound = true;
-                            break;
-                        case OID.EKU_CLIENT_AUTH:
-                            eku.ClientAuth = true;
-                            ekuFound = true;
-                            break;
-                        case OID.EKU_SERVER_AUTH:
-                            eku.ServerAuth = true;
-                            ekuFound = true;
-                            break;
-                        case OID.EKU_TIME_STAMPING:
-                            eku.TimeStamping = true;
-                            ekuFound = true;
-                            break;
-                        case OID.EKU_CODE_SIGNING:
-                            eku.CodeSigning = true;
-                            ekuFound = true;
-                            break;
-                        case OID.EKU_OCSP_SIGNING:
-                            eku.OcspSigning = true;
-                            ekuFound = true;
-                            break;
-                        default:
-                            eku.OtherEKUs ??= new List<OID>();
-                            ((List<OID>)eku.OtherEKUs).Add(OID.GetOrCreate(e.Content));
-                            ekuFound = true;
-                            break;
-                    }
+                    case OID.EKU_EMAIL_PROTECTION:
+                        eku.EmailProtection = true;
+                        break;
+                    case OID.EKU_CLIENT_AUTH:
+                        eku.ClientAuth = true;
+                        break;
+                    case OID.EKU_SERVER_AUTH:
+                        eku.ServerAuth = true;
+                        break;
+                    case OID.EKU_TIME_STAMPING:
+                        eku.TimeStamping = true;
+                        break;
+                    case OID.EKU_CODE_SIGNING:
+                        eku.CodeSigning = true;
+                        break;
+                    case OID.EKU_OCSP_SIGNING:
+                        eku.OcspSigning = true;
+                        break;
+                    default:
+                        eku.OtherEKUs ??= new List<OID>();
+                        ((List<OID>)eku.OtherEKUs).Add(OID.GetOrCreate(e.Content));
+                        break;
                 }
             }
             return ekuFound;
         }
         catch
         {
+            eku = new ExtendedKeyUsage();
             return false;
         }
     }
@@ -138,26 +100,31 @@ public static partial class Extensions
     public static bool TryGetICACertIntercon(this ITag certificate, out ICACertIntercon intercon)
     {
         intercon = default;
-        if (!IsCertificate(certificate) || !HasCertExtensionsInternal(certificate))
-            return false;
-        var ext = GetCretificateExtensionsInternal(certificate);
-        foreach (var item in ext)
+        try
         {
-            if (OID.GetOrCreate(item.Children[0].Content).Value != OID.ICA_CERT_INTERCONNECTION)
-                continue;
-            var masterReqId = item.Children[1].Children[0].Children[0];
-            var certCount = item.Children[1].Children[0].Children[1];
-            intercon = new ICACertIntercon(item.Children[1].Children[0].Children[2].Content.SequenceEqual(_booleanTrueSequence),
-                                           masterReqId.ContentToString(),
-                                           int.Parse(certCount.ContentToString()));
+            // SEQUENCE { masterRequestId, interconnectedCertificatesCount INTEGER, isMaster BOOLEAN }
+            if (FindExtensionContent(certificate, _icaCertInterconnectionSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence, Children.Count: 3 } value
+                || value.Children[1].TagNumber != (int)Tag.Integer
+                || value.Children[2].TagNumber != (int)Tag.Boolean
+                || !int.TryParse(value.Children[1].ContentToString(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var count))
+            {
+                return false;
+            }
+            intercon = new ICACertIntercon(value.Children[2].Content.SequenceEqual(_booleanTrueSequence),
+                                           value.Children[0].ContentToString(),
+                                           count);
             return true;
         }
-        return false;
+        catch
+        {
+            intercon = default;
+            return false;
+        }
     }
 
-
     /// <summary>
-    /// Attempts to get the key usage from the specified X.509v3 certificate tag.
+    /// Attempts to get the key usage from the specified X.509v3 certificate or certificate request tag. For any
+    /// other tree, the first key usage extension found anywhere in it is used.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
     /// <param name="keyUsage">The key usage object.</param>
@@ -167,25 +134,16 @@ public static partial class Extensions
         keyUsage = default;
         try
         {
-            //if the tag is cert, the KeyUsage location is somewhere in cert's extensions
-            if (IsCertificate(tag))
+            if (IsV3Certificate(tag) || IsCertificationRequest(tag))
             {
-                tag = tag.Children[0].Children[tag.Children[0].Children.Count - 1].Children[0];
-            }
-            else if (IsCertificateRequest(tag) && HasRequestedExtensions(tag))
-            {
-                foreach (var item in GetRequestedExtensions(tag))
-                {
-                    if (FindKeyUsage(item, ref keyUsage))
-                    {
-                        return true;
-                    }
-                }
+                return FindExtension(tag, _keyUsageOidSequence) is { } extension
+                       && TryReadKeyUsage(extension, out keyUsage);
             }
             return FindKeyUsage(tag, ref keyUsage);
         }
         catch
         {
+            keyUsage = default;
             return false;
         }
 
@@ -198,12 +156,8 @@ public static partial class Extensions
             while (pending.Count > 0)
             {
                 var tag = pending.Pop();
-                if (tag.IsKeyUsageSequence())
-                {
-                    var ku = tag.GetKeyUsageBitStringTag();
-                    keyUsage = KeyUsage.FromBitStringContent(ku.Content, tag.IsKeyUsageCritical());
+                if (tag.IsKeyUsageSequence() && TryReadKeyUsage(tag, out keyUsage))
                     return true;
-                }
 
                 for (int i = tag.Children.Count - 1; i >= 0; i--)
                 {
@@ -211,6 +165,15 @@ public static partial class Extensions
                 }
             }
             return false;
+        }
+
+        static bool TryReadKeyUsage(ITag extension, out KeyUsage keyUsage)
+        {
+            keyUsage = default;
+            if (extension.GetKeyUsageBitStringTag() is not { } bits)
+                return false;
+            keyUsage = KeyUsage.FromBitStringContent(bits.Content, extension.IsKeyUsageCritical());
+            return true;
         }
     }
 
@@ -225,101 +188,88 @@ public static partial class Extensions
         serialNumber = null;
         try
         {
-            if (!IsCertificate(tag))
+            if (!IsV3Certificate(tag))
                 return false;
-            serialNumber = tag.Children[0].Children[1].ContentToString();
-            return serialNumber is not null;
+            serialNumber = TbsFields(tag)[1].ContentToString();
+            return true;
         }
         catch
         {
+            serialNumber = null;
             return false;
         }
     }
 
     /// <summary>
-    /// Attempts to get the subject alternative name (SAN) from the specified X.509v3 certificate tag.
+    /// Attempts to get the subject alternative name (SAN) from the specified X.509v3 certificate or certificate request tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
     /// <param name="san">The list of subject alternative name items.</param>
-    /// <returns><see langword="true"/> if the subject alternative name was found; otherwise, <see langword="false"/>.</returns>
+    /// <returns>
+    /// <see langword="true"/> if the subject alternative name extension was found; otherwise (also when the
+    /// certificate or request has none), <see langword="false"/>.
+    /// </returns>
     public static bool TryGetSubjectAlternativeName(this ITag tag, out List<ISanItem> san)
     {
         san = new();
         try
         {
-            if (IsCertificate(tag))
+            // GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
+            if (FindExtensionContent(tag, _sanOidSequence) is not { TagNumber: (int)Tag.Sequence } names)
+                return false;
+            foreach (var name in names.Children)
             {
-                if (!HasCertExtensionsInternal(tag))
-                    return false;
-                foreach (var item in GetCretificateExtensionsInternal(tag))
-                {
-                    if (!item.Children[0].Content.SequenceEqual(_sanOidSequence))
-                        continue;
-                    ParseSan(san, item);
-                    break;
-                }
-            }
-            else if (IsCertificateRequest(tag))
-            {
-                if (!HasRequestedExtensions(tag))
-                    return false;
-                foreach (var item in GetRequestedExtensions(tag))
-                {
-                    if (!item.Children[0].Content.SequenceEqual(_sanOidSequence))
-                        continue;
-                    ParseSan(san, item);
-                    break;
-                }
+                if (ReadGeneralName(name) is { } item)
+                    san.Add(item);
             }
             return true;
-
         }
         catch
         {
+            san = new();
             return false;
         }
 
-        static void ParseSan(List<ISanItem> san, ITag item)
+        // GeneralName ::= CHOICE { otherName [0], rfc822Name [1] IA5String, dNSName [2] IA5String,
+        //     x400Address [3] ORAddress, directoryName [4] Name, ediPartyName [5] EDIPartyName,
+        //     uniformResourceIdentifier [6] IA5String, iPAddress [7] OCTET STRING, registeredID [8] OBJECT IDENTIFIER }
+        // RFC 5280 uses implicit tagging, except that a tag on a CHOICE (Name, DirectoryString) is always explicit.
+        static ISanItem? ReadGeneralName(ITag name)
         {
-            foreach (var sanItem in item.Children[1].Children[0].Children)
+            if (name.TagClass != 2)
+                return null;
+            switch (name.TagNumber & 0x1F)
             {
-                switch (sanItem.TagName)
-                {
-                    case "[0]":
-                        if (sanItem.Children[0].Content.SequenceEqual(_icaUserIdSequence))
-                            san.Add(new IcaUserId(sanItem.Children[1]));
-                        else if (sanItem.Children[0].Content.SequenceEqual(_icaIkMpsvSequence))
-                            san.Add(new IcaIkMpsv(sanItem.Children[1]));
-                        else
-                            san.Add(new OtherName(OID.GetOrCreate(sanItem.Children[0].Content), sanItem.Children[1].Children[0]));
-                        break;
-                    case "[1]":
-                        san.Add(new Rfc822Name(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
-                        break;
-                    case "[2]":
-                        san.Add(new DnsName(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
-                        break;
-                    case "[3]":
-                        san.Add(new X400Address(sanItem.Children[0]));
-                        break;
-                    case "[4]":
-                        san.Add(new DirectoryName(sanItem.Children[0]));
-                        break;
-                    case "[5]":
-                        san.Add(new EdiPartyName(sanItem.Children[0]));
-                        break;
-                    case "[6]":
-                        san.Add(new UniformResourceIdentifier(IsoStringParsingStrategy.Default.Parse(sanItem.Content)));
-                        break;
-                    case "[7]":
-                        san.Add(new IPAddress(sanItem.Content));
-                        break;
-                    case "[8]":
-                        san.Add(new RegisteredID(OID.GetOrCreate(sanItem.Children[0].Content)));
-                        break;
-                    default:
-                        break;
-                }
+                case 0:
+                    // OtherName ::= SEQUENCE { type-id OBJECT IDENTIFIER, value [0] EXPLICIT ANY }
+                    if (name.Children.Count != 2 || name.Children[0].TagNumber != (int)Tag.ObjectIdentifier || name.Children[1].Children.Count != 1)
+                        return null;
+                    if (name.Children[0].Content.SequenceEqual(_icaUserIdSequence))
+                        return new IcaUserId(name.Children[1]);
+                    if (name.Children[0].Content.SequenceEqual(_icaIkMpsvSequence))
+                        return new IcaIkMpsv(name.Children[1]);
+                    return new OtherName(OID.GetOrCreate(name.Children[0].Content), name.Children[1].Children[0]);
+                case 1:
+                    return new Rfc822Name(IsoStringParsingStrategy.Default.Parse(name.Content));
+                case 2:
+                    return new DnsName(IsoStringParsingStrategy.Default.Parse(name.Content));
+                case 3:
+                    // The [3] element is the ORAddress SEQUENCE itself.
+                    return new X400Address(name);
+                case 4:
+                    return name.Children.Count == 1 ? new DirectoryName(name.Children[0]) : null;
+                case 5:
+                    // The [5] element is the EDIPartyName SEQUENCE itself.
+                    return new EdiPartyName(name);
+                case 6:
+                    return new UniformResourceIdentifier(IsoStringParsingStrategy.Default.Parse(name.Content));
+                case 7:
+                    return new IPAddress(name.Content);
+                case 8:
+                    // The [8] element is the OBJECT IDENTIFIER itself.
+                    return name.Content.Length > 0 ? new RegisteredID(OID.GetOrCreate(name.Content)) : null;
+                default:
+                    return null;
             }
         }
     }
@@ -335,13 +285,14 @@ public static partial class Extensions
         notAfter = default;
         try
         {
-            if (!IsCertificate(tag))
+            if (!IsV3Certificate(tag))
                 return false;
-            notAfter = DateTime.Parse(tag.Children[0].Children[4].Children[1].ContentToString());
+            notAfter = DateTime.Parse(TbsFields(tag)[4].Children[1].ContentToString());
             return true;
         }
         catch
         {
+            notAfter = default;
             return false;
         }
     }
@@ -357,13 +308,14 @@ public static partial class Extensions
         notBefore = default;
         try
         {
-            if (!IsCertificate(tag))
+            if (!IsV3Certificate(tag))
                 return false;
-            notBefore = DateTime.Parse(tag.Children[0].Children[4].Children[0].ContentToString());
+            notBefore = DateTime.Parse(TbsFields(tag)[4].Children[0].ContentToString());
             return true;
         }
         catch
         {
+            notBefore = default;
             return false;
         }
     }
@@ -381,13 +333,12 @@ public static partial class Extensions
         extensions = [];
         try
         {
-            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
-                return false;
-            extensions = GetCretificateExtensionsInternal(tag);
-            return true;
+            extensions = GetExtensions(tag, certificatesOnly: true);
+            return extensions.Count > 0;
         }
         catch
         {
+            extensions = [];
             return false;
         }
     }
@@ -406,29 +357,22 @@ public static partial class Extensions
         authorityKeyIdentifier = null;
         try
         {
-            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+            // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] IMPLICIT OCTET STRING OPTIONAL, ... }
+            if (FindExtensionContent(tag, _authorityKeyIdentifierOidSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.Sequence } aki)
                 return false;
-
-            foreach (var ext in GetCretificateExtensionsInternal(tag))
+            foreach (var field in aki.Children)
             {
-                if (!ext.Children[0].Content.SequenceEqual(_authorityKeyIdentifierOidSequence))
-                    continue;
-
-                // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] IMPLICIT OCTET STRING OPTIONAL, ... }
-                foreach (var field in GetExtensionValue(ext).Children[0].Children)
+                if (field.TagClass == 2 && (field.TagNumber & 0x1F) == 0)
                 {
-                    if (field.TagClass == 2 && (field.TagNumber & 0x1F) == 0)
-                    {
-                        authorityKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(field));
-                        return true;
-                    }
+                    authorityKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(field));
+                    return true;
                 }
-                return false;
             }
             return false;
         }
         catch
         {
+            authorityKeyIdentifier = null;
             return false;
         }
     }
@@ -444,22 +388,15 @@ public static partial class Extensions
         subjectKeyIdentifier = null;
         try
         {
-            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
+            // SubjectKeyIdentifier ::= KeyIdentifier ::= OCTET STRING
+            if (FindExtensionContent(tag, _subjectKeyIdentifierOidSequence, certificatesOnly: true) is not { TagNumber: (int)Tag.OctetString } keyId)
                 return false;
-
-            foreach (var ext in GetCretificateExtensionsInternal(tag))
-            {
-                if (!ext.Children[0].Content.SequenceEqual(_subjectKeyIdentifierOidSequence))
-                    continue;
-
-                // SubjectKeyIdentifier ::= KeyIdentifier ::= OCTET STRING
-                subjectKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(GetExtensionValue(ext).Children[0]));
-                return true;
-            }
-            return false;
+            subjectKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(keyId));
+            return true;
         }
         catch
         {
+            subjectKeyIdentifier = null;
             return false;
         }
     }
@@ -477,19 +414,7 @@ public static partial class Extensions
     {
         try
         {
-            if (!IsCertificate(tag) || !HasCertExtensionsInternal(tag))
-                return null;
-            foreach (var ext in GetCretificateExtensionsInternal(tag))
-            {
-                if (ext.Children[0].Content.SequenceEqual(_subjectDirectoryAttributesOidSequence))
-                {
-                    var octet = ext.Children[1];
-                    if (octet.Children.Count == 0)
-                        return null;
-                    return octet.Children[0];
-                }
-            }
-            return null;
+            return FindExtensionContent(tag, _subjectDirectoryAttributesOidSequence, certificatesOnly: true);
         }
         catch
         {
@@ -515,6 +440,7 @@ public static partial class Extensions
         }
         catch
         {
+            attrs = null;
             return false;
         }
     }
@@ -604,16 +530,18 @@ public static partial class Extensions
     public static bool TryGetCertificateSubjectItem(this ITag tag, string oid, bool forIssuer, out List<string> items)
     {
         items = new List<string>();
-        if (IsOidNullOrEmpty(oid) || !IsCertificate(tag))
-            return false;
-
-        if (forIssuer)
+        try
         {
-            return InternalExtensions.TryGetSubjectItem(tag.Children[0].Children[3], OidEncoder.GetBytes(oid), out items);
+            if (IsOidNullOrEmpty(oid) || !IsV3Certificate(tag))
+                return false;
+            // tbsCertificate: issuer is field 3, subject field 5
+            var name = TbsFields(tag)[forIssuer ? 3 : 5];
+            return InternalExtensions.TryGetSubjectItem(name, OidEncoder.GetBytes(oid), out items);
         }
-        else
+        catch
         {
-            return InternalExtensions.TryGetSubjectItem(tag.Children[0].Children[5], OidEncoder.GetBytes(oid), out items);
+            items = new List<string>();
+            return false;
         }
     }
 
@@ -641,13 +569,13 @@ public static partial class Extensions
         items = new List<string>();
         try
         {
-            if (IsOidNullOrEmpty(oid) || !IsCertificateRequest(tag))
+            if (IsOidNullOrEmpty(oid) || !IsCertificationRequest(tag))
                 return false;
-            tag = tag.Children[0].Children[1];
-            return InternalExtensions.TryGetSubjectItem(tag, OidEncoder.GetBytes(oid), out items);
+            return InternalExtensions.TryGetSubjectItem(RequestSubject(tag), OidEncoder.GetBytes(oid), out items);
         }
         catch
         {
+            items = new List<string>();
             return false;
         }
     }

@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using fASN1.NET.ContentParsing;
 using fASN1.NET.Tags;
@@ -123,11 +124,18 @@ public class SubjectDirectoryAttributes
         if (sda.Children.Count == 0)
             return Empty;
 
-        //sdaItem should be a SEQUENCE
+        // SubjectDirectoryAttributes ::= SEQUENCE SIZE (1..MAX) OF Attribute
+        // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF AttributeValue }
         foreach (var sdaItem in sda.Children)
         {
+            if (sdaItem is not { TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+                || sdaItem[0].TagNumber != (int)Tag.ObjectIdentifier
+                || sdaItem[1] is not { TagNumber: (int)Tag.Set, Children.Count: > 0 } values)
+            {
+                continue;
+            }
             var oid = sdaItem[0].Content.AsSpan();
-            var value = sdaItem[1][0].ContentToString();
+            var value = values[0].ContentToString();
 
             if (oid.SequenceEqual(InternalExtensions._genderOidSequence))
             {
@@ -143,11 +151,12 @@ public class SubjectDirectoryAttributes
             }
             else if (oid.SequenceEqual(InternalExtensions._countryOfResidenceOidSequence))
             {
-                countryOfResidence.Add(value);
+                // The country attributes may hold several countries in one SET.
+                countryOfResidence.AddRange(values.Children.Select(v => v.ContentToString()));
             }
             else if (oid.SequenceEqual(InternalExtensions._countryOfCitizenshipOidSequence))
             {
-                countryOfCitizenship.Add(value);
+                countryOfCitizenship.AddRange(values.Children.Select(v => v.ContentToString()));
             }
         }
 

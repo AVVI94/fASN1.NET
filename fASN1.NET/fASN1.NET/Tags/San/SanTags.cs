@@ -124,13 +124,15 @@ public class DirectoryName : ISanItem
 {
     public DirectoryName(ITag content)
     {
+        // Name ::= SEQUENCE OF SET OF AttributeTypeAndValue; every attribute of a multi-valued RDN is listed.
         Content = new List<RelativeDistinguishedName>();
         foreach (var set in content.Children)
         {
-            Content.Add(new RelativeDistinguishedName(
-                OID.GetOrCreate(set.Children[0].Children[0].Content),
-                set.Children[0].Children[1].ContentToString()
-            ));
+            foreach (var attribute in set.Children)
+            {
+                if (InternalExtensions.TryGetAttributeTypeAndValue(attribute, out var type, out var value))
+                    Content.Add(new RelativeDistinguishedName(OID.GetOrCreate(type.Content), value.ContentToString()));
+            }
         }
     }
     public SanItemKind Kind => SanItemKind.DirectoryName;
@@ -145,16 +147,23 @@ public class EdiPartyName : ISanItem
     // EDIPartyName ::= SEQUENCE {
     //        nameAssigner            [0]     DirectoryString OPTIONAL,
     //        partyName               [1]     DirectoryString }
+    // The fields are tagged CHOICEs, so each [0] or [1] element holds the DirectoryString.
     public EdiPartyName(ITag content)
     {
-        if (content.Children.Count == 2)
+        PartyName = "";
+        foreach (var field in content.Children)
         {
-            NameAssigner = content.Children[0].ContentToString();
-            PartyName = content.Children[1].ContentToString();
-        }
-        else
-        {
-            PartyName = content.Children[0].ContentToString();
+            if (field.TagClass != 2 || field.Children.Count != 1)
+                continue;
+            switch (field.TagNumber & 0x1F)
+            {
+                case 0:
+                    NameAssigner = field.Children[0].ContentToString();
+                    break;
+                case 1:
+                    PartyName = field.Children[0].ContentToString();
+                    break;
+            }
         }
     }
     public SanItemKind Kind => SanItemKind.EdiPartyName;
