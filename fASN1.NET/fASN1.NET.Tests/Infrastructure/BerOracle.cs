@@ -11,26 +11,26 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <remarks>
 /// The oracle encodes these library decisions on top of plain BER:
 /// <list type="bullet">
-/// <item>A primitive universal OCTET STRING whose content is a complete run of valid BER
-/// elements (none of them EOC) is shown with those elements as children; otherwise it is a leaf.</item>
+/// <item>A primitive universal OCTET STRING whose content is a complete run of valid elements with DER lengths
+/// (definite, minimal; none of them EOC) is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
 /// <item>Only single-byte identifiers are supported.</item>
 /// </list>
 /// </remarks>
 internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNode> Children)
 {
-    public static OracleNode Decode(ReadOnlySpan<byte> data) => ReadElement(data, out _);
+    public static OracleNode Decode(ReadOnlySpan<byte> data) => ReadElement(data, AsnEncodingRules.BER, out _);
 
-    private static OracleNode ReadElement(ReadOnlySpan<byte> src, out int consumed)
+    private static OracleNode ReadElement(ReadOnlySpan<byte> src, AsnEncodingRules rules, out int consumed)
     {
         if ((src[0] & 0x1F) == 0x1F)
             throw new AsnContentException("Multi-byte identifiers are outside the supported subset");
-        AsnDecoder.ReadEncodedValue(src, AsnEncodingRules.BER, out var contentOffset, out var contentLength, out consumed);
+        AsnDecoder.ReadEncodedValue(src, rules, out var contentOffset, out var contentLength, out consumed);
         var identifier = src[0];
         var content = src.Slice(contentOffset, contentLength);
 
         if ((identifier & 0x20) != 0)
-            return new OracleNode(identifier, [], ReadAll(content));
+            return new OracleNode(identifier, [], ReadAll(content, rules));
 
         if (identifier == 0x04 && TryReadEncapsulated(content, out var encapsulated))
             return new OracleNode(identifier, [], encapsulated);
@@ -38,12 +38,12 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
         return new OracleNode(identifier, content.ToArray(), []);
     }
 
-    private static List<OracleNode> ReadAll(ReadOnlySpan<byte> content)
+    private static List<OracleNode> ReadAll(ReadOnlySpan<byte> content, AsnEncodingRules rules)
     {
         var list = new List<OracleNode>();
         while (!content.IsEmpty)
         {
-            list.Add(ReadElement(content, out var consumed));
+            list.Add(ReadElement(content, rules, out var consumed));
             content = content.Slice(consumed);
         }
         return list;
@@ -54,7 +54,9 @@ internal sealed record OracleNode(byte Identifier, byte[] Content, List<OracleNo
         children = [];
         try
         {
-            children = ReadAll(content);
+            // DER lengths only: the library re-encodes encapsulated children with DER lengths, so any other
+            // form would change the OCTET STRING value on Serialize.
+            children = ReadAll(content, AsnEncodingRules.DER);
             // EOC cannot be content, so a direct EOC child means this is not a run of elements.
             return children.Count > 0 && !children.Any(c => c.Identifier == 0x00);
         }

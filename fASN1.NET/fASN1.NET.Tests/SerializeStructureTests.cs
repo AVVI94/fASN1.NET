@@ -59,4 +59,52 @@ public class SerializeStructureTests
 
         Assert.Equal(H("30 07 02 01 05 A0 02 05 00"), Asn1Serializer.Serialize(parsed));
     }
+
+    /// <summary>
+    /// An OCTET STRING value is data, often signed or hashed, so Serialize must write it back unchanged. Content
+    /// that is valid BER but not in DER length form used to be read as children and re-encoded with DER lengths,
+    /// which changed the value. Such content now stays a leaf.
+    /// </summary>
+    [Theory]
+    [InlineData("30 81 03 02 01 05")]          // long form for a length under 128
+    [InlineData("30 82 00 03 02 01 05")]       // leading zero length octet
+    [InlineData("30 80 02 01 05 00 00")]       // indefinite length
+    [InlineData("30 05 30 81 02 05 00")]       // non-DER length one level down
+    [InlineData("04 04 30 81 00 01 02 01 05")] // ... inside a nested OCTET STRING: the inner one stays raw instead
+    public void OctetStringWithNonDerContent_SerializesToTheSameBytes(string contentHex)
+    {
+        var content = H(contentHex);
+        byte[] data = [0x04, (byte)content.Length, .. content];
+
+        var parsed = Asn1Serializer.Deserialize(data);
+
+        Assert.Equal(Convert.ToHexString(data), Convert.ToHexString(Asn1Serializer.Serialize(parsed)));
+    }
+
+    [Fact]
+    public void OctetStringWithNonDerContent_IsALeafHoldingTheRawBytes()
+    {
+        var parsed = Asn1Serializer.Deserialize(H("04 06 30 81 03 02 01 05"));
+
+        Assert.Empty(parsed.Children);
+        Assert.Equal(H("30 81 03 02 01 05"), parsed.Content);
+    }
+
+    [Fact]
+    public void OctetStringWithDerContent_IsStillReadAsChildren()
+    {
+        var parsed = Asn1Serializer.Deserialize(H("04 05 30 03 02 01 05"));
+
+        var sequence = Assert.IsType<Sequence>(Assert.Single(parsed.Children));
+        Assert.Equal(H("05"), Assert.Single(sequence.Children).Content);
+    }
+
+    [Fact]
+    public void BerOutsideOctetStrings_IsStillAccepted()
+    {
+        // Lengths of the structure itself are not values; Serialize normalizes them to DER as before.
+        var parsed = Asn1Serializer.Deserialize(H("30 81 03 02 01 05"));
+
+        Assert.Equal(H("30 03 02 01 05"), Asn1Serializer.Serialize(parsed));
+    }
 }

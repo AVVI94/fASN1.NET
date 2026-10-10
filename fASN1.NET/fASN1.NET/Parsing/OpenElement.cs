@@ -24,6 +24,13 @@ internal struct OpenElement
     /// <summary>Content start of the definite-length element that sets <see cref="Limit"/>, for error messages.</summary>
     public long LimitOwnerStart;
 
+    /// <summary>
+    /// The element is an encapsulation probe or lies inside one, so every length inside it must be in DER form
+    /// (definite, minimal). <see cref="Asn1Serializer.Serialize"/> writes DER lengths, so encapsulated children
+    /// in any other form would re-encode to different bytes and change the OCTET STRING's value.
+    /// </summary>
+    public bool RequiresDerLengths;
+
     /// <summary>Number of direct children read so far.</summary>
     public int ChildCount;
 

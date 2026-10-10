@@ -16,4 +16,5 @@ internal enum ParseFailureKind
     LengthTruncated,
     TooManyLengthOctets,
     LengthTooLarge,
+    NonDerLengthInOctetString,
 }

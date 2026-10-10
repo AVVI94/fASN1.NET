@@ -19,14 +19,17 @@ public class HostileInputTests
     [Fact]
     public void ProbesClaimingTheRestOfTheInput_ParseInLinearTime()
     {
-        var data = new List<byte> { 0x30, 0x82, (byte)((PROBE_COUNT * 6) >> 8), (byte)(PROBE_COUNT * 6) };
-        for (int i = 1; i <= PROBE_COUNT; i++)
+        // Built from the last probe backwards, so every SEQUENCE header uses a DER length; otherwise the probe
+        // would be rejected for its length form before reaching past its OCTET STRING.
+        var probes = new List<byte>();
+        for (int i = 0; i < PROBE_COUNT; i++)
         {
-            var remaining = (PROBE_COUNT - i) * 6;
-            data.AddRange([0x04, 0x04, 0x30, 0x82, (byte)(remaining >> 8), (byte)remaining]);
+            byte[] header = [0x30, .. ParsedStructureTests.EncodeLength(probes.Count)];
+            probes.InsertRange(0, [0x04, (byte)header.Length, .. header]);
         }
+        byte[] data = [0x30, .. ParsedStructureTests.EncodeLength(probes.Count), .. probes];
 
-        var tag = ParseWithin(data.ToArray(), TimeSpan.FromSeconds(2));
+        var tag = ParseWithin(data, TimeSpan.FromSeconds(2));
 
         Assert.IsType<Sequence>(tag);
         Assert.Equal(PROBE_COUNT, tag.Children.Count);
@@ -34,7 +37,7 @@ public class HostileInputTests
         {
             Assert.IsType<OctetString>(child);
             Assert.Empty(child.Children);
-            Assert.Equal(4, child.Content.Length);
+            Assert.Equal(0x30, child.Content[0]);
         });
         // The last one claims zero remaining bytes, so it really holds an empty SEQUENCE.
         Assert.IsType<Sequence>(Assert.Single(tag.Children[PROBE_COUNT - 1].Children));
@@ -42,7 +45,8 @@ public class HostileInputTests
 
     /// <summary>
     /// The same attack with indefinite-length SEQUENCEs that look for their end-of-contents marker past the end
-    /// of the OCTET STRING holding them.
+    /// of the OCTET STRING holding them. Encapsulated children must now have DER lengths, so these probes fail
+    /// at the first header; the test keeps guarding the time it takes.
     /// </summary>
     [Fact]
     public void IndefiniteLengthProbesReachingPastTheirOctetString_ParseInLinearTime()

@@ -24,6 +24,7 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
         ParseFailureKind.LengthTruncated => $"Unexpected end of data in the length of the element at offset {offset}",
         ParseFailureKind.TooManyLengthOctets => $"Length of the element at offset {offset} uses {value} octets; at most {Ber.MAX_LENGTH_OCTETS} are supported",
         ParseFailureKind.LengthTooLarge => $"Length of the element at offset {offset} is too large",
+        ParseFailureKind.NonDerLengthInOctetString => $"Length of the element at offset {offset} is not in DER form, so the OCTET STRING holding it is kept as raw bytes",
         _ => "Unknown deserialization error",
     };
 }

@@ -120,10 +120,12 @@ internal ref struct StructureScanner<TSource>
             // The tag number continues in the following bytes; reading them as the length would misplace every later element.
             return Fail(new ParseFailure(ParseFailureKind.MultiByteTagNumber, elementStart));
         }
-        if (!TryReadLength(elementStart, out var contentLength))
+        if (!TryReadLength(elementStart, out var contentLength, out var isDerLength))
             return ElementScanResult.Failed;
         if (_source.Position > CurrentLimit)
             return FailOutsideContainer();
+        if (!isDerLength && _openElements.Count > 0 && _openElements.Last.RequiresDerLengths)
+            return Fail(new ParseFailure(ParseFailureKind.NonDerLengthInOctetString, elementStart));
 
         if (identifier == Ber.END_OF_CONTENTS)
         {
@@ -179,6 +181,8 @@ internal ref struct StructureScanner<TSource>
 
         element.Limit = element.IsIndefiniteLength ? CurrentLimit : element.ContentEnd;
         element.LimitOwnerStart = element.IsIndefiniteLength ? CurrentLimitOwnerStart : element.ContentStart;
+        element.RequiresDerLengths = element.Kind == OpenElementKind.EncapsulationProbe
+            || (_openElements.Count > 0 && _openElements.Last.RequiresDerLengths);
         _openElements.Add(element);
         return ElementScanResult.ChildrenOpened;
     }
@@ -242,9 +246,11 @@ internal ref struct StructureScanner<TSource>
     /// <summary>Reads the length bytes that follow an identifier.</summary>
     /// <param name="elementStart">Offset of the identifier, for error messages.</param>
     /// <param name="contentLength">The content length, or <see langword="null"/> for indefinite length.</param>
-    private bool TryReadLength(long elementStart, out long? contentLength)
+    /// <param name="isDer">The length is definite and in the shortest form, as DER requires.</param>
+    private bool TryReadLength(long elementStart, out long? contentLength, out bool isDer)
     {
         contentLength = null;
+        isDer = false;
         var first = _source.ReadByte();
         if (first == -1)
             return FailLength(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
@@ -252,6 +258,7 @@ internal ref struct StructureScanner<TSource>
         if ((first & Ber.LONG_FORM_LENGTH_FLAG) == 0)
         {
             contentLength = first; // short form: the byte is the length
+            isDer = true;
             return true;
         }
 
@@ -267,8 +274,11 @@ internal ref struct StructureScanner<TSource>
             var octet = _source.ReadByte();
             if (octet == -1)
                 return FailLength(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
+            if (i == 0)
+                isDer = octet != 0; // a leading zero octet means fewer octets would do
             length = (length << 8) | (uint)octet;
         }
+        isDer &= length >= 0x80; // shorter lengths must use the short form
 
         // Content is read into a byte[], so lengths are limited to what an array can index.
         if (length > int.MaxValue)

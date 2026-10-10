@@ -39,6 +39,11 @@ internal static class Contract
         {
             Assert.NotNull(tag);
             TreeAssert.WellFormed(tag);
+            // Serialize writes DER lengths; reading that back must give the same tree, every OCTET STRING value included.
+            var reserialized = Asn1Serializer.Serialize(tag);
+            Assert.True(Asn1Serializer.TryDeserialize(reserialized, factory(), out var reparsed, out var reparseError), reparseError);
+            TreeAssert.Equal(tag, reparsed!);
+            Assert.Equal(reserialized, Asn1Serializer.Serialize(reparsed!));
         }
         else
         {
