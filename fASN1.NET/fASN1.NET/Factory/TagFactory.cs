@@ -37,7 +37,7 @@ public sealed class DefaultTagFactory : ITagFactory
                 Tag.Eoc => new Eoc(),
                 Tag.Boolean => new BooleanTag(content: content),
                 Tag.Integer => new Integer(content: content),
-                Tag.BitString => new BitString(content: content),
+                Tag.BitString => new BitString(content, includesUnusedBits: true),
                 Tag.OctetString => new OctetString(content: content),
                 Tag.Null => new Null(),
                 Tag.ObjectIdentifier => new ObjectIdentifier(content: content),

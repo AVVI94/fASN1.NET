@@ -14,6 +14,11 @@ public class BitString : TagBase
     public BitString(byte[]? content = null, IList<ITag>? children = null) : base(WithUnusedBits(content), children)
     {
     }
+    /// <summary>Creates the tag from content that already starts with the unused-bits byte, as parsed or as a factory receives it.</summary>
+    internal BitString(byte[]? rawContent, bool includesUnusedBits) : base(includesUnusedBits ? rawContent : WithUnusedBits(rawContent), null)
+    {
+    }
+
     /// <summary>Creates the tag from one byte of bits; the unused-bits count is derived from its trailing zero bits.</summary>
     /// <param name="content">The bits.</param>
     public BitString(byte content) : this([content], null) { }
@@ -29,8 +34,9 @@ public class BitString : TagBase
     {
         if (content is null)
             return null;
-        var _ = CalculateUnusedBits(content);
-        return [(byte)_, .. content];
+        if (content.Length == 0)
+            return [0x00]; // no bits
+        return [(byte)CalculateUnusedBits(content), .. content];
     }
 
     /// <summary>
@@ -42,14 +48,14 @@ public class BitString : TagBase
     public static int CalculateUnusedBits(byte[] bitStringBytes)
     {
         byte lastByte = bitStringBytes[bitStringBytes.Length - 1];
+        if (lastByte == 0)
+            return 0;
+        // The lowest set bit ends the used bits; the zero bits below it are unused. This used to return 7 minus
+        // that count, so 0x80 (one used bit) got no unused bits and 0x01 got seven.
         int unusedBits = 0;
-        for (int i = 0; i < 8; i++)
+        while ((lastByte & (1 << unusedBits)) == 0)
         {
-            if ((lastByte & 1 << i) != 0)
-            {
-                unusedBits = 7 - i;
-                break;
-            }
+            unusedBits++;
         }
         return unusedBits;
     }
