@@ -15,6 +15,9 @@ public interface ITagFactory
 
 public sealed class DefaultTagFactory : ITagFactory
 {
+    /// <summary>The factory is stateless, so one instance serves every call that does not pass its own.</summary>
+    internal static DefaultTagFactory Instance { get; } = new();
+
     /// <inheritdoc/>
     public ITag Create(int tag, byte[]? content = null)
     {
