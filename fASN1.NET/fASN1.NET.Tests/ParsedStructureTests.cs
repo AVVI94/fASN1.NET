@@ -389,6 +389,21 @@ public class ParsedStructureTests
     public void FailureDeepInside_FailsWholeDocument() =>
         AssertFails("30 08 30 06 30 04 02 05 01 02", "Content size is not correct for tag Integer at offset 8");
 
+    [Theory]
+    [InlineData("1F 21 01 05", 0)]
+    [InlineData("BF 21 03 02 01 05", 0)]
+    [InlineData("30 04 5F 21 01 05", 2)]
+    public void MultiByteTagNumber_Fails(string hex, int offset)
+    {
+        AssertFails(hex, $"Element at offset {offset} uses a multi-byte tag number, which is not supported");
+    }
+
+    [Fact]
+    public void MultiByteTagNumber_InsideOctetString_KeepsRawContent()
+    {
+        AssertTree("04 03 1F 01 05", Octets("1F0105"));
+    }
+
     [Fact]
     public void Deserialize_ThrowsWithErrorMessage()
     {

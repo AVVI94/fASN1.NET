@@ -330,6 +330,12 @@ public static partial class Asn1Serializer
                 : $"Unexpected end of data at offset {elementStart}";
             return Step.Completed;
         }
+        if ((tagNumber & 0x1F) == 0x1F)
+        {
+            // The tag number continues in the following bytes; reading them as the length would misplace every later element.
+            error = $"Element at offset {elementStart} uses a multi-byte tag number, which is not supported";
+            return Step.Completed;
+        }
         long? length = DecodeLength(stream, elementStart, ref error, out var valid);
         if (!valid)
         {

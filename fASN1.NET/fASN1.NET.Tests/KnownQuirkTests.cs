@@ -52,16 +52,6 @@ public class KnownQuirkTests
     }
 
     [Fact]
-    public void HighTagNumberForm_IsNotSupported()
-    {
-        var data = H("1F 21 01 05");
-        Contract.Check(data);
-
-        Assert.False(Asn1Serializer.TryDeserialize(data, out _, out var error));
-        Assert.Equal("Content size is not correct for tag Unknown_31 at offset 2", error);
-    }
-
-    [Fact]
     public void IndefiniteInput_ReserializesAsDefinite()
     {
         Assert.Equal(H("30 03 02 01 05"), Asn1Serializer.Serialize(Parse("30 80 02 01 05 00 00")));
