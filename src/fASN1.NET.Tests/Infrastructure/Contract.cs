@@ -8,7 +8,8 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// The public contract every input must satisfy, valid or not:
 /// <list type="bullet">
 /// <item><c>TryDeserialize</c> never throws; it returns a tag, or <see langword="false"/> with an error message.</item>
-/// <item><c>Deserialize</c> returns the same tree, or throws when <c>TryDeserialize</c> fails.</item>
+/// <item><c>Deserialize</c> returns the same tree, or throws when <c>TryDeserialize</c> fails, with the same message:
+/// <see cref="Asn1DeserializationException"/> for invalid data, otherwise the tag factory's exception.</item>
 /// <item>The byte-array and stream overloads agree, and the stream is read from its current position.</item>
 /// <item>A parsed tree never has a node with both children and content.</item>
 /// </list>
@@ -69,22 +70,15 @@ internal static class Contract
             }
         }
 
-        if (data.Length == 0)
-        {
-            Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(data, factory()));
-        }
-        else if (ok)
+        if (ok)
         {
             TreeAssert.Equal(tag!, Asn1Serializer.Deserialize(data, factory()));
         }
         else
         {
             var ex = Record.Exception(() => Asn1Serializer.Deserialize(data, factory()));
-            Assert.NotNull(ex);
-            if (ex is Asn1DeserializationException)
-            {
-                Assert.Equal(error, ex.Message);
-            }
+            Assert.True(ex is Asn1DeserializationException or InvalidOperationException, $"Deserialize threw {ex?.GetType().Name ?? "nothing"}");
+            Assert.Equal(error, ex!.Message);
         }
 
         return (tag, error);

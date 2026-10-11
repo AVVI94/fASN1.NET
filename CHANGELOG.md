@@ -46,11 +46,16 @@ Parsing:
   indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`. End-of-contents octets
   anywhere but at the end of contents in the indefinite form (X.690 §8.1.5), such as `00 00` at the root or inside
   a definite-length SEQUENCE, are an error; they used to become an `Eoc` tag in the tree.
-- `TryDeserialize` always gives an error message when it returns `false`. An exception from a custom tag factory or
-  from the stream propagates out of `Deserialize`. Error messages use the terms of X.690 (identifier, length and
-  contents octets, encodings, end-of-contents octets, fragments), for example "The contents in the indefinite form at
-  offset 2 have no end-of-contents octets" instead of "Indefinite-length container at offset 2 has no end-of-contents
-  marker".
+- `TryDeserialize` never throws, in every overload, and always gives an error message when it returns `false`: for
+  invalid data, a `null` argument (the byte-array overloads used to throw `ArgumentNullException`), a stream that
+  cannot seek, or an exception from the stream or a custom tag factory. `Deserialize` throws
+  `Asn1DeserializationException` for invalid data, empty data included (it used to throw `ArgumentException`),
+  `ArgumentNullException` for a `null` argument (a `null` stream used to give `ArgumentException`),
+  `ArgumentException` for a stream that cannot seek, and lets an exception from the stream or a custom tag factory
+  propagate. The message for empty data is "The data is empty" instead of "Stream is null or empty.".
+- Error messages use the terms of X.690 (identifier, length and contents octets, encodings, end-of-contents octets,
+  fragments), for example "The contents in the indefinite form at offset 2 have no end-of-contents octets" instead
+  of "Indefinite-length container at offset 2 has no end-of-contents marker".
 - `ITag.Children` of a parsed tag is an `IList<ITag>` that is not a `List<ITag>`; it is still fully mutable.
 - Every built-in tag derives from the new public `TagBase`.
 

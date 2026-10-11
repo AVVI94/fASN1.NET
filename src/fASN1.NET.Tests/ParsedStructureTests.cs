@@ -354,7 +354,7 @@ public class ParsedStructureTests
     }
 
     [Fact]
-    public void Empty_Fails() => AssertFails("", "Stream is null or empty.");
+    public void Empty_Fails() => AssertFails("", "The data is empty");
 
     [Fact]
     public void ContainerPastEndOfStream_Fails() =>
@@ -418,12 +418,6 @@ public class ParsedStructureTests
     }
 
     [Fact]
-    public void Deserialize_EmptyInput_ThrowsArgumentException()
-    {
-        Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(Array.Empty<byte>()));
-    }
-
-    [Fact]
     public void TrailingBytesAfterRoot_AreIgnored()
     {
         AssertTree("02 01 05 FF FF", Int("05"));
@@ -469,17 +463,6 @@ public class ParsedStructureTests
         var nodes = TreeAssert.Walk(tag).Select(n => n.Tag).ToList();
         Assert.Equal(6, nodes.Count);
         Assert.All(nodes, node => Assert.Contains(node, factory.Created));
-    }
-
-    [Fact]
-    public void FactoryException_TryDeserializeReportsIt_DeserializeThrows()
-    {
-        var data = H("30 06 02 01 05 02 01 07");
-
-        Assert.False(Asn1Serializer.TryDeserialize(data, new Contract.ThrowingFactory(2), out var tag, out var error));
-        Assert.Null(tag);
-        Assert.False(string.IsNullOrEmpty(error));
-        Assert.ThrowsAny<Exception>(() => Asn1Serializer.Deserialize(data, new Contract.ThrowingFactory(2)));
     }
 
     private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
