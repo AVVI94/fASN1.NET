@@ -1,5 +1,5 @@
-﻿// See https://aka.ms/new-console-template for more information
-using BenchmarkDotNet.Running;
+﻿using BenchmarkDotNet.Running;
 using fASN1.NET.Benchmark;
 
-BenchmarkRunner.Run<Bench>();
+// Arguments select benchmarks and options, for example: --filter *Deserialize* --inProcess
+BenchmarkSwitcher.FromAssembly(typeof(Bench).Assembly).Run(args);
