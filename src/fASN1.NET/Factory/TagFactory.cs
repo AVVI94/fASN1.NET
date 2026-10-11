@@ -5,7 +5,9 @@ namespace fASN1.NET.Factory;
 /// <summary>
 /// Creates the <see cref="ITag"/> for an identifier. Pass a custom factory to the deserializer to use your own
 /// tag classes. The parser assumes that a tag created for a given identifier always has the same
-/// <see cref="ITag.IsConstructed"/>, <see cref="ITag.TagClass"/> and <see cref="ITag.TagNumber"/>.
+/// <see cref="ITag.IsConstructed"/>, <see cref="ITag.TagClass"/> and <see cref="ITag.TagNumber"/>. It removes any
+/// <see cref="ITag.Content"/> or <see cref="ITag.Children"/> the returned tag already has and fills them from the
+/// encoding, so a factory may return pre-filled tags without changing the parsed tree.
 /// </summary>
 public interface ITagFactory
 {
@@ -15,7 +17,7 @@ public interface ITagFactory
     /// <param name="tagClass">The class: 0 universal, 1 application, 2 context-specific, 3 private.</param>
     /// <param name="isConstructed">Whether the identifier has the constructed bit.</param>
     /// <param name="tagNumber">The tag number within the class, 0 or more.</param>
-    /// <param name="content">The content bytes, if known; the parser sets content after creating the tag.</param>
+    /// <param name="content">The content bytes, if known; the parser always passes <see langword="null"/> and sets the content itself.</param>
     /// <returns>An instance of <see cref="ITag"/>.</returns>
     ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null);
 }

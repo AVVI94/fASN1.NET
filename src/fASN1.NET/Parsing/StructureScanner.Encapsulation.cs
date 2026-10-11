@@ -59,7 +59,6 @@ internal ref partial struct StructureScanner<TSource>
     private ScanResult RejectEncapsulation(in EnclosingEncoding octetString)
     {
         _nodes.Truncate(octetString.NodeIndex + 1);
-        _nodes[octetString.NodeIndex].IsEncapsulationRejected = true;
         _source.Position = octetString.ContentsStart;
         return SkipContents(octetString.IdentifierAndLength);
     }

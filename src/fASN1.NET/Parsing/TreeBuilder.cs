@@ -44,7 +44,7 @@ internal static class TreeBuilder
                 }
                 else
                 {
-                    tag = Ber.CreateTag(tagFactory, node.IdentifierOctet, node.TagNumber);
+                    tag = CreateEmptyTag(tagFactory, node.IdentifierOctet, node.TagNumber);
                     if (!TryFillContents(ref source, tag, node, ref failure))
                     {
                         return false;
@@ -109,7 +109,7 @@ internal static class TreeBuilder
 
         if (!isOctetString)
         {
-            tag = Ber.CreateTag(tagFactory, node.IdentifierOctet, node.TagNumber);
+            tag = CreateEmptyTag(tagFactory, node.IdentifierOctet, node.TagNumber);
             tag.Content = buffer;
             return true;
         }
@@ -148,23 +148,7 @@ internal static class TreeBuilder
     {
         if (node.ContentsAreChildren)
         {
-            // Definite-form contents with no nested encodings give the tag empty contents, as a primitive encoding would.
-            if (node.ChildCount == 0 && !node.IsIndefiniteForm && TagBase.GetChildCount(tag) == 0)
-            {
-                tag.Content = [];
-            }
-
             return true;
-        }
-
-        if (node.IsEncapsulationRejected && TagBase.GetChildCount(tag) > 0)
-        {
-            tag.Children.Clear();
-        }
-
-        if (TagBase.GetChildCount(tag) > 0)
-        {
-            return true; // children the factory gave the tag take the place of contents
         }
 
         var contents = ReadContents(ref source, tag, node.ContentsStart, node.ContentsLength, ref failure);
@@ -177,14 +161,34 @@ internal static class TreeBuilder
         return true;
     }
 
+    /// <summary>
+    /// Creates a node's tag through the factory and removes any contents or children the factory gave it, so the tree
+    /// holds exactly what the encoding holds.
+    /// </summary>
+    private static ITag CreateEmptyTag(ITagFactory tagFactory, int identifierOctet, int tagNumber)
+    {
+        var tag = Ber.CreateTag(tagFactory, identifierOctet, tagNumber);
+        if (TagBase.GetChildCount(tag) > 0)
+        {
+            tag.Children.Clear();
+        }
+
+        if (tag.Content is not { Length: 0 })
+        {
+            tag.Content = [];
+        }
+
+        return tag;
+    }
+
     private static PendingParent ExpectChildren(ITag tag, int childCount)
     {
-        if (tag is TagBase builtIn && builtIn.ChildCount == 0 && builtIn.Content.Length == 0)
+        if (tag is TagBase builtIn)
         {
             return new PendingParent { ChildArray = builtIn.InitializeChildArray(childCount), RemainingChildren = childCount };
         }
 
-        // A custom tag, or one the factory created with children already: append through its own list.
+        // A custom tag: append through its own list.
         return new PendingParent { ChildList = tag.Children, RemainingChildren = childCount };
     }
 

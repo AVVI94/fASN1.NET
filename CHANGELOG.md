@@ -30,6 +30,8 @@ Tag identity:
   `Create(int identifier, byte[]? content)`. The parser decides the shape of the tree from the encoding alone, as
   X.690 defines it: a tag whose `IsConstructed` disagrees with its identifier no longer changes how its content is
   read. The factory is asked only for the tags of the final tree, and for a tag's name when an error message needs it.
+  Contents or children a tag from the factory already has are removed before the parser fills it; they used to be
+  kept, and children took the place of the contents octets.
 - `ContextSpecific_0` to `ContextSpecific_3` take `isConstructed` instead of an identifier byte;
   `ContextSpecificTag`, `Application` and `Private` take the tag number and `isConstructed`, and `Unknown` also the
   class. These tags report `IsConstructed` from their identifier, so a parsed empty `A0 00` is constructed.

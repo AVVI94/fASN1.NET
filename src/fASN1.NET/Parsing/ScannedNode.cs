@@ -35,12 +35,6 @@ internal struct ScannedNode
     public int ChildCount;
 
     /// <summary>
-    /// A primitive OCTET STRING whose contents were tried as encapsulated encodings and are not; it is a leaf holding
-    /// the raw contents octets.
-    /// </summary>
-    public bool IsEncapsulationRejected;
-
-    /// <summary>
     /// A string in the constructed encoding (X.690 §8.6.4, §8.7.3, §8.23.6): its value is the contents of its
     /// <see cref="FragmentCount"/> primitive fragments from <see cref="FirstFragment"/>, after the unused-bits octet
     /// <see cref="UnusedBits"/> for a BIT STRING, and <see cref="ContentsLength"/> is their total.

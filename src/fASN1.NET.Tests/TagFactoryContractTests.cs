@@ -39,6 +39,28 @@ public class TagFactoryContractTests
         Assert.Equal(3, factory.Calls); // SEQUENCE and two INTEGERs; scanning asks for nothing
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrefilledTags_AreEmptiedBeforeTheParserFillsThem(bool customTags)
+    {
+        // An INTEGER, an encapsulating OCTET STRING, an empty SEQUENCE, a constructed OCTET STRING, an empty SEQUENCE in
+        // the indefinite form and an OCTET STRING whose contents are not encodings.
+        var data = Convert.FromHexString("301F" + "020105" + "04053003020107" + "3000" + "24800401410401420000" + "30800000" + "0403020500");
+
+        var expected = Asn1Serializer.Deserialize(data);
+        var actual = Asn1Serializer.Deserialize(data, new PrefillingFactory(customTags));
+
+        Assert.Equal(Shape(expected), Shape(actual));
+        if (!customTags)
+        {
+            Assert.Equal(Asn1Serializer.Serialize(expected), Asn1Serializer.Serialize(actual));
+        }
+    }
+
+    private static string Shape(ITag tag)
+        => $"{tag.TagNumber}:{Convert.ToHexString(tag.Content)}[{string.Join(",", tag.Children.Select(Shape))}]";
+
     private sealed class ConstructedClaimingFactory : ITagFactory
     {
         public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
@@ -63,6 +85,25 @@ public class TagFactoryContractTests
         {
             Calls++;
             return _inner.Create(tagClass, isConstructed, tagNumber, content);
+        }
+    }
+
+    /// <summary>Returns tags that already have contents and a child, as built-in tags or as <see cref="MockTag"/>.</summary>
+    private sealed class PrefillingFactory(bool customTags) : ITagFactory
+    {
+        private readonly DefaultTagFactory _inner = new();
+
+        public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
+        {
+            if (customTags)
+            {
+                return new MockTag { TagNumber = tagNumber, Content = [0xEE], Children = [new Null()] };
+            }
+
+            var tag = _inner.Create(tagClass, isConstructed, tagNumber, content);
+            tag.Children.Add(new Null());
+            tag.Content = [0xEE];
+            return tag;
         }
     }
 }
