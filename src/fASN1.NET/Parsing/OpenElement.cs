@@ -1,21 +1,15 @@
 namespace fASN1.NET.Parsing;
 
-/// <summary>An element whose child elements the scanner is currently reading.</summary>
+/// <summary>An element whose content the scanner is reading as nested elements.</summary>
 internal struct OpenElement
 {
     public OpenElementKind Kind;
 
-    /// <summary>Index of the element's <see cref="ScannedNode"/>.</summary>
+    /// <summary>The element's identifier and length.</summary>
+    public ElementHeader Header;
+
+    /// <summary>Index of the element's <see cref="ScannedNode"/>; for a string segment, the node of its string.</summary>
     public int NodeIndex;
-
-    /// <summary>Offset of the identifier.</summary>
-    public long ElementStart;
-
-    /// <summary>Offset of the first content byte.</summary>
-    public long ContentStart;
-
-    /// <summary>Declared content length; <see langword="null"/> for indefinite length.</summary>
-    public long? ContentLength;
 
     /// <summary>
     /// Offset that nothing inside this element may cross: its own content end when it has a definite length,
@@ -29,32 +23,28 @@ internal struct OpenElement
 
     /// <summary>
     /// The element is an encapsulation probe or lies inside one, so everything inside it must be in the form
-    /// <see cref="Asn1Serializer.Serialize"/> writes: DER lengths (definite, minimal) and SET children in DER order.
-    /// Encapsulated children in any other form would re-encode to different bytes and change the OCTET STRING's value.
+    /// <see cref="Asn1Serializer.Serialize"/> writes back unchanged; see <c>StructureScanner.CheckDerForm</c>.
     /// </summary>
     public bool RequiresDer;
-
-    /// <summary>
-    /// Extent of the last direct child read, for a SET that <see cref="RequiresDer"/>, whose children must be in
-    /// DER order.
-    /// </summary>
-    public long PreviousChildStart, PreviousChildEnd;
-
-    /// <summary>For <see cref="OpenElementKind.ConstructedString"/>: the tag number its segments must have.</summary>
-    public int SegmentTagNumber;
 
     /// <summary>Number of direct children read so far.</summary>
     public int ChildCount;
 
     /// <summary>
-    /// An end-of-contents marker appeared among the direct children of a probe. Such a marker cannot be
-    /// content, so the probe will be rolled back.
+    /// Offset of the direct child being read, or of the last one once it is complete. The children of an element
+    /// lie side by side, so the previous child ends where this one starts.
     /// </summary>
-    public bool HasEndOfContentsChild;
+    public long ChildStart;
 
-    /// <summary>The children end at an end-of-contents marker rather than at <see cref="ContentEnd"/>.</summary>
-    public readonly bool IsIndefiniteLength => ContentLength is null;
+    /// <summary>Offset of the direct child before <see cref="ChildStart"/>, to check the order of a SET's children.</summary>
+    public long PreviousChildStart;
 
-    /// <summary>Offset just past the content of a definite-length element.</summary>
-    public readonly long ContentEnd => ContentStart + ContentLength!.Value;
+    /// <summary>For a constructed string or one of its segments: the tag number its segments must have.</summary>
+    public int SegmentTagNumber;
+
+    public readonly bool IsIndefiniteLength => Header.IsIndefiniteLength;
+
+    public readonly long ContentStart => Header.ContentStart;
+
+    public readonly long ContentEnd => Header.ContentEnd;
 }

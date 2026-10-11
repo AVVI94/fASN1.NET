@@ -1,5 +1,4 @@
 using System;
-using fASN1.NET.Tags;
 
 namespace fASN1.NET.Parsing;
 
@@ -13,20 +12,22 @@ namespace fASN1.NET.Parsing;
 /// <see cref="TreeBuilder"/> reads the ones that end up in the tree.
 /// </para>
 /// <para>
-/// Elements whose children are being read are kept on an explicit stack of <see cref="OpenElement"/>s,
-/// so nesting depth does not consume call stack space.
+/// Elements whose content is being read as nested elements are kept on an explicit stack of
+/// <see cref="OpenElement"/>s, so nesting depth does not consume call stack space. Every step of the scan is one
+/// of: read the next element, add a finished element to its parent, or close the innermost open element.
 /// </para>
 /// <para>
-/// A primitive OCTET STRING is tried as child elements (an "encapsulation probe"), because X.509 wraps
-/// DER structures in OCTET STRINGs. If that fails, the probe's nodes are truncated away and the element
-/// becomes a leaf holding its raw bytes. Nothing was allocated for the discarded nodes.
+/// Open elements come in three kinds (<see cref="OpenElementKind"/>): constructed elements; primitive OCTET STRINGs
+/// tried as nested elements ("encapsulation probes", <c>StructureScanner.Probes.cs</c>), which roll back to raw bytes
+/// if that fails; and constructed strings, whose segments are joined (<c>StructureScanner.Strings.cs</c>).
 /// </para>
 /// </remarks>
-internal ref struct StructureScanner<TSource>
+internal ref partial struct StructureScanner<TSource>
     where TSource : struct, IByteSource
 {
     private const int INITIAL_OPEN_ELEMENT_CAPACITY = 16;
     private const int INITIAL_NODE_CAPACITY = 128;
+    private const int INITIAL_SEGMENT_CAPACITY = 16;
 
     private TSource _source;
     private PooledList<OpenElement> _openElements;
@@ -34,22 +35,14 @@ internal ref struct StructureScanner<TSource>
     private PooledList<ContentSegment> _segments;
     private ParseFailure _failure;
 
-    /// <summary>Offset of the identifier of the element that completed last.</summary>
-    private long _completedElementStart;
-
-    /// <summary>Unused bits of the last segment read of the constructed BIT STRING being scanned.</summary>
-    private int _stringUnusedBits;
-
     /// <param name="source">The input, positioned at the element to scan. The scanner reads a copy.</param>
     public StructureScanner(TSource source)
     {
         _source = source;
         _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
         _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
-        _segments = new PooledList<ContentSegment>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
+        _segments = new PooledList<ContentSegment>(INITIAL_SEGMENT_CAPACITY, clearOnRemove: false);
         _failure = default;
-        _completedElementStart = 0;
-        _stringUnusedBits = 0;
     }
 
     /// <summary>The nodes of the final tree in pre-order, once <see cref="TryScan"/> has succeeded.</summary>
@@ -62,38 +55,23 @@ internal ref struct StructureScanner<TSource>
     public readonly ParseFailure Failure => _failure;
 
     /// <summary>Offset just past the scanned element, once <see cref="TryScan"/> has succeeded.</summary>
-    public long Position => _source.Position;
+    public readonly long Position => _source.Position;
 
     /// <summary>Scans the element at the current position and all of its descendants.</summary>
     public bool TryScan()
     {
-        var result = ScanNextElement();
-        while (true)
+        var result = ScanElement();
+        while (_openElements.Count > 0 || result == ElementScanResult.ChildrenOpened)
         {
-            if (result == ElementScanResult.ChildrenOpened)
+            result = result switch
             {
-                result = ContinueInnermostElement();
-                continue;
-            }
-
-            if (_openElements.Count == 0)
-                return result == ElementScanResult.Succeeded;
-
-            switch (result)
-            {
-                case ElementScanResult.EndOfContentsRead:
-                    result = CloseElement(_openElements.RemoveLast(), childrenSucceeded: true);
-                    break;
-
-                case ElementScanResult.Failed:
-                    result = CloseElement(_openElements.RemoveLast(), childrenSucceeded: false);
-                    break;
-
-                default:
-                    result = CompleteChild();
-                    break;
-            }
+                ElementScanResult.ChildrenOpened => ContinueInnermostElement(),
+                ElementScanResult.Succeeded => AddChildToInnermostElement(),
+                ElementScanResult.EndOfContentsRead => CloseElement(_openElements.RemoveLast(), childrenSucceeded: true),
+                _ => CloseElement(_openElements.RemoveLast(), childrenSucceeded: false),
+            };
         }
+        return result == ElementScanResult.Succeeded;
     }
 
     /// <summary>Returns the rented buffers.</summary>
@@ -105,95 +83,83 @@ internal ref struct StructureScanner<TSource>
     }
 
     /// <summary>
-    /// Reads the identifier and length of the next element and records it as a node. A leaf is complete
-    /// once its content has been skipped; an element read as children is opened.
+    /// Reads the next element. A leaf is complete once its content has been skipped; an element whose content is
+    /// read as nested elements is opened.
     /// </summary>
-    private ElementScanResult ScanNextElement()
+    private ElementScanResult ScanElement()
     {
-        var elementStart = _source.Position;
-        var isInsideIndefiniteLength = _openElements.Count > 0 && _openElements.Last.IsIndefiniteLength;
-        if (isInsideIndefiniteLength && elementStart >= CurrentLimit)
+        var start = _source.Position;
+        var insideIndefiniteLength = false;
+        if (_openElements.Count > 0)
         {
+            ref var parent = ref _openElements.Last;
+            parent.ChildStart = start;
+            insideIndefiniteLength = parent.IsIndefiniteLength;
             // The enclosing definite-length element ends here, so the end-of-contents marker is missing.
-            return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart));
+            if (insideIndefiniteLength && start >= parent.Limit)
+                return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, parent.ContentStart));
         }
 
-        var identifier = _source.ReadByte();
-        if (identifier == -1)
+        if (!ElementHeaderReader.TryRead(ref _source, out var header, out var failure))
         {
-            return Fail(isInsideIndefiniteLength
+            return Fail(insideIndefiniteLength && failure.Kind == ParseFailureKind.UnexpectedEndOfData
                 ? new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart)
-                : new ParseFailure(ParseFailureKind.UnexpectedEndOfData, elementStart));
+                : failure);
         }
-        var tagNumber = identifier & Ber.TAG_NUMBER_MASK;
-        if (tagNumber == Ber.TAG_NUMBER_MASK && !TryReadMultiByteTagNumber(elementStart, out tagNumber))
-            return ElementScanResult.Failed;
-        if (!TryReadLength(elementStart, out var contentLength, out var isDerLength))
-            return ElementScanResult.Failed;
         if (_source.Position > CurrentLimit)
             return FailOutsideContainer();
-        if (!isDerLength && _openElements.Count > 0 && _openElements.Last.RequiresDer)
-            return Fail(new ParseFailure(ParseFailureKind.NonDerLengthInOctetString, elementStart));
 
-        if (identifier == Ber.END_OF_CONTENTS)
+        if (header.IsEndOfContents && insideIndefiniteLength)
         {
-            if (isInsideIndefiniteLength)
-            {
-                return contentLength == 0
-                    ? ElementScanResult.EndOfContentsRead
-                    : Fail(new ParseFailure(ParseFailureKind.InvalidEndOfContents, elementStart));
-            }
-            if (_openElements.Count > 0 && _openElements.Last.Kind == OpenElementKind.EncapsulationProbe)
-                _openElements.Last.HasEndOfContentsChild = true;
+            return header.ContentLength == 0
+                ? ElementScanResult.EndOfContentsRead
+                : Fail(new ParseFailure(ParseFailureKind.InvalidEndOfContents, header.Start));
         }
-        if (_openElements.Count > 0 && _openElements.Last.Kind == OpenElementKind.ConstructedString)
-            return ScanStringSegment(elementStart, identifier, contentLength);
+        if (_openElements.Count > 0)
+        {
+            ref var parent = ref _openElements.Last;
+            if (parent.RequiresDer && !CheckDerForm(header, parent.Kind))
+                return ElementScanResult.Failed;
+            if (parent.Kind is OpenElementKind.ConstructedString or OpenElementKind.StringSegment)
+                return ScanStringSegment(header);
+        }
 
-        var segmentTagNumber = Ber.StringSegmentTagNumber(identifier);
+        var segmentTagNumber = Ber.StringSegmentTagNumber(header.Identifier);
         if (segmentTagNumber != 0)
-            return OpenConstructedString(elementStart, identifier, tagNumber, contentLength, segmentTagNumber);
+            return OpenConstructedString(header, segmentTagNumber);
 
-        var contentStart = _source.Position;
         var nodeIndex = _nodes.Add(new ScannedNode
         {
-            Identifier = identifier,
-            TagNumber = tagNumber,
-            ContentStart = contentStart,
-            ContentLength = contentLength ?? 0,
-            IsIndefiniteLength = contentLength is null,
+            Identifier = header.Identifier,
+            TagNumber = header.TagNumber,
+            ContentStart = header.ContentStart,
+            ContentLength = header.ContentLength ?? 0,
+            IsIndefiniteLength = header.IsIndefiniteLength,
         });
-
+        if (Ber.IsConstructed(header.Identifier))
+            return Open(new OpenElement { Kind = OpenElementKind.Constructed, Header = header, NodeIndex = nodeIndex });
         // Indefinite length is only valid for constructed elements, so such an OCTET STRING is not probed;
-        // skipping its content fails below instead.
-        var isConstructed = Ber.IsConstructed(identifier);
-        if (isConstructed || (Ber.IsEncapsulationCandidate(identifier) && contentLength is not null))
-        {
-            return OpenChildren(new OpenElement
-            {
-                Kind = isConstructed ? OpenElementKind.Constructed : OpenElementKind.EncapsulationProbe,
-                NodeIndex = nodeIndex,
-                ElementStart = elementStart,
-                ContentStart = contentStart,
-                ContentLength = contentLength,
-            });
-        }
-
-        _completedElementStart = elementStart;
-        return SkipContent(identifier, tagNumber, contentStart, contentLength);
+        // skipping its content fails instead.
+        if (Ber.IsEncapsulationCandidate(header.Identifier) && !header.IsIndefiniteLength)
+            return Open(new OpenElement { Kind = OpenElementKind.EncapsulationProbe, Header = header, NodeIndex = nodeIndex });
+        return SkipContent(header);
     }
 
-    /// <summary>Starts reading an element's content as children, unless its declared content cannot fit.</summary>
-    private ElementScanResult OpenChildren(OpenElement element)
+    /// <summary>Starts reading an element's content as nested elements, unless its declared content cannot fit.</summary>
+    private ElementScanResult Open(OpenElement element)
     {
-        if (!element.IsIndefiniteLength && element.ContentEnd > _source.Length)
+        if (!element.IsIndefiniteLength)
         {
-            _failure = new ParseFailure(ParseFailureKind.ContainerPastEndOfData, element.ContentStart, element.ContentLength!.Value);
-            return CloseElement(element, childrenSucceeded: false);
-        }
-        if (!element.IsIndefiniteLength && element.ContentEnd > CurrentLimit)
-        {
-            _failure = OutsideContainerFailure();
-            return CloseElement(element, childrenSucceeded: false);
+            if (element.ContentEnd > _source.Length)
+            {
+                _failure = new ParseFailure(ParseFailureKind.ContainerPastEndOfData, element.ContentStart, element.Header.ContentLength!.Value);
+                return CloseElement(element, childrenSucceeded: false);
+            }
+            if (element.ContentEnd > CurrentLimit)
+            {
+                _failure = OutsideContainerFailure();
+                return CloseElement(element, childrenSucceeded: false);
+            }
         }
 
         element.Limit = element.IsIndefiniteLength ? CurrentLimit : element.ContentEnd;
@@ -205,28 +171,24 @@ internal ref struct StructureScanner<TSource>
     }
 
     /// <summary>The element just completed is the next child of the innermost open element.</summary>
-    private ElementScanResult CompleteChild()
+    private ElementScanResult AddChildToInnermostElement()
     {
-        if (!IsInDerSetOrder())
-            return Fail(new ParseFailure(ParseFailureKind.SetNotInDerOrderInOctetString, _completedElementStart));
+        ref var parent = ref _openElements.Last;
+        if (parent.RequiresDer && !CheckDerSetOrder(ref parent))
+            return ElementScanResult.Failed;
 
-        _openElements.Last.ChildCount++;
+        parent.PreviousChildStart = parent.ChildStart;
+        parent.ChildCount++;
         return ContinueInnermostElement();
     }
 
     /// <summary>Reads the next child of the innermost open element, or closes it when its content is used up.</summary>
     private ElementScanResult ContinueInnermostElement()
-        => InnermostElementExpectsAnotherChild() ? ScanNextElement() : CloseCompletedInnermostElement();
-
-    private bool InnermostElementExpectsAnotherChild()
     {
         ref var innermost = ref _openElements.Last;
-        return innermost.IsIndefiniteLength || _source.Position < innermost.ContentEnd;
-    }
+        if (innermost.IsIndefiniteLength || _source.Position < innermost.ContentEnd)
+            return ScanElement();
 
-    /// <summary>Closes a definite-length element whose content has been read up to (or past) its end.</summary>
-    private ElementScanResult CloseCompletedInnermostElement()
-    {
         var element = _openElements.RemoveLast();
         var endsExactly = _source.Position == element.ContentEnd;
         if (!endsExactly)
@@ -235,282 +197,44 @@ internal ref struct StructureScanner<TSource>
     }
 
     /// <summary>
-    /// Records the outcome of reading an element's children. A constructed element fails with its
-    /// children; a probe that did not hold a complete run of children becomes a leaf with raw content.
+    /// Records the outcome of reading an element's content as nested elements. A constructed element or string fails
+    /// with its children; a probe whose content is not a complete run of elements becomes a leaf with raw content.
     /// </summary>
     private ElementScanResult CloseElement(in OpenElement element, bool childrenSucceeded)
     {
-        if (element.Kind == OpenElementKind.ConstructedString)
-            return CloseConstructedString(element, childrenSucceeded);
+        switch (element.Kind)
+        {
+            case OpenElementKind.Constructed:
+                return childrenSucceeded ? KeepChildren(element) : ElementScanResult.Failed;
+            case OpenElementKind.EncapsulationProbe:
+                return childrenSucceeded ? KeepChildren(element) : RollBackProbe(element);
+            case OpenElementKind.ConstructedString:
+                return childrenSucceeded ? JoinSegments(element) : ElementScanResult.Failed;
+            default: // a constructed segment: its segments already belong to its string
+                return childrenSucceeded ? ElementScanResult.Succeeded : ElementScanResult.Failed;
+        }
+    }
 
-        _completedElementStart = element.ElementStart;
+    private ElementScanResult KeepChildren(in OpenElement element)
+    {
         ref var node = ref _nodes[element.NodeIndex];
-        var keepsChildren = element.Kind == OpenElementKind.Constructed
-            ? childrenSucceeded
-            : childrenSucceeded && !element.HasEndOfContentsChild;
-
-        if (keepsChildren)
-        {
-            node.ContentIsChildren = true;
-            node.ChildCount = element.ChildCount;
-            return ElementScanResult.Succeeded;
-        }
-        if (element.Kind == OpenElementKind.Constructed)
-            return ElementScanResult.Failed;
-
-        _nodes.Truncate(element.NodeIndex + 1);
-        node.IsRolledBackProbe = true;
-        _source.Position = element.ContentStart;
-        return SkipContent(node.Identifier, node.TagNumber, element.ContentStart, element.ContentLength);
-    }
-
-    /// <summary>
-    /// Starts a constructed string. It becomes one leaf node holding the joined content of its segments, recorded
-    /// as the primitive form, so the factory creates the same tag as for a primitive string.
-    /// </summary>
-    private ElementScanResult OpenConstructedString(long elementStart, int identifier, int tagNumber, long? contentLength, int segmentTagNumber)
-    {
-        // DER has no constructed strings, and Serialize writes the joined value as a primitive string, which would
-        // change the bytes of the OCTET STRING holding it.
-        if (_openElements.Count > 0 && _openElements.Last.RequiresDer)
-            return Fail(new ParseFailure(ParseFailureKind.ConstructedStringInOctetString, elementStart));
-
-        var contentStart = _source.Position;
-        var nodeIndex = _nodes.Add(new ScannedNode
-        {
-            Identifier = identifier & ~Ber.CONSTRUCTED_FLAG,
-            TagNumber = tagNumber,
-            ContentStart = contentStart,
-            IsJoinedString = true,
-            FirstSegment = _segments.Count,
-        });
-        _stringUnusedBits = 0;
-        return OpenChildren(new OpenElement
-        {
-            Kind = OpenElementKind.ConstructedString,
-            NodeIndex = nodeIndex,
-            ElementStart = elementStart,
-            ContentStart = contentStart,
-            ContentLength = contentLength,
-            SegmentTagNumber = segmentTagNumber,
-        });
-    }
-
-    /// <summary>
-    /// Reads one segment of the innermost constructed string: a primitive segment adds its content to the string,
-    /// a constructed one (allowed in BER) is opened and its segments are added in turn. Segments get no nodes.
-    /// </summary>
-    private ElementScanResult ScanStringSegment(long elementStart, int identifier, long? contentLength)
-    {
-        var segmentTagNumber = _openElements.Last.SegmentTagNumber;
-        var segmentName = segmentTagNumber == (int)Tag.BitString ? "a BIT STRING" : "an OCTET STRING";
-        if ((identifier & ~Ber.CONSTRUCTED_FLAG) != segmentTagNumber)
-            return Fail(new ParseFailure(ParseFailureKind.InvalidStringSegment, elementStart, tagName: segmentName));
-
-        var contentStart = _source.Position;
-        if ((identifier & Ber.CONSTRUCTED_FLAG) != 0)
-        {
-            return OpenChildren(new OpenElement
-            {
-                Kind = OpenElementKind.ConstructedString,
-                NodeIndex = -1,
-                ElementStart = elementStart,
-                ContentStart = contentStart,
-                ContentLength = contentLength,
-                SegmentTagNumber = segmentTagNumber,
-            });
-        }
-
-        _completedElementStart = elementStart;
-        var skipped = SkipContent(segmentTagNumber, segmentTagNumber, contentStart, contentLength);
-        if (skipped != ElementScanResult.Succeeded)
-            return skipped;
-
-        var segment = new ContentSegment { Start = contentStart, Length = contentLength!.Value };
-        if (segmentTagNumber == (int)Tag.BitString)
-        {
-            // Each BIT STRING segment starts with its own unused-bits count; only the last may be non-zero (§8.6.4).
-            if (_stringUnusedBits != 0 || segment.Length == 0)
-                return Fail(new ParseFailure(ParseFailureKind.InvalidBitStringSegment, elementStart));
-            var resume = _source.Position;
-            _source.Position = contentStart;
-            _stringUnusedBits = _source.ReadByte();
-            _source.Position = resume;
-            if (_stringUnusedBits > 7 || (segment.Length == 1 && _stringUnusedBits != 0))
-                return Fail(new ParseFailure(ParseFailureKind.InvalidBitStringSegment, elementStart));
-            segment.Start++;
-            segment.Length--;
-        }
-        _segments.Add(segment);
-        return ElementScanResult.Succeeded;
-    }
-
-    /// <summary>Closes a constructed string, or a constructed segment of one; the outermost gets its joined length.</summary>
-    private ElementScanResult CloseConstructedString(in OpenElement element, bool childrenSucceeded)
-    {
-        _completedElementStart = element.ElementStart;
-        if (!childrenSucceeded)
-            return ElementScanResult.Failed;
-        if (element.NodeIndex < 0)
-            return ElementScanResult.Succeeded; // a nested segment: its segments already belong to the outer string
-
-        ref var node = ref _nodes[element.NodeIndex];
-        node.SegmentCount = _segments.Count - node.FirstSegment;
-        long length = element.SegmentTagNumber == (int)Tag.BitString ? 1 : 0;
-        foreach (var segment in _segments.AsSpan().Slice(node.FirstSegment))
-        {
-            length += segment.Length;
-        }
-        if (length > int.MaxValue)
-            return Fail(new ParseFailure(ParseFailureKind.LengthTooLarge, element.ElementStart));
-
-        node.ContentLength = length;
-        node.UnusedBits = element.SegmentTagNumber == (int)Tag.BitString ? _stringUnusedBits : 0;
+        node.ContentIsChildren = true;
+        node.ChildCount = element.ChildCount;
         return ElementScanResult.Succeeded;
     }
 
     /// <summary>Checks that a leaf's content is present and moves past it.</summary>
-    private ElementScanResult SkipContent(int identifier, int tagNumber, long contentStart, long? contentLength)
+    private ElementScanResult SkipContent(in ElementHeader header)
     {
-        if (contentLength is null)
-            return Fail(new ParseFailure(ParseFailureKind.IndefiniteLengthPrimitive, contentStart));
-        if (contentLength.Value > _source.Length - _source.Position)
-            return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, contentStart, identifier: identifier, tagNumber: tagNumber));
-        if (_source.Position + contentLength.Value > CurrentLimit)
+        if (header.ContentLength is not { } length)
+            return Fail(new ParseFailure(ParseFailureKind.IndefiniteLengthPrimitive, header.ContentStart));
+        if (length > _source.Length - _source.Position)
+            return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, header.ContentStart, identifier: header.Identifier, tagNumber: header.TagNumber));
+        if (_source.Position + length > CurrentLimit)
             return FailOutsideContainer();
 
-        _source.Position += contentLength.Value;
+        _source.Position += length;
         return ElementScanResult.Succeeded;
-    }
-
-    /// <summary>
-    /// Reads a tag number of 31 or more, which follows the first identifier byte in base 128, most significant digit
-    /// first, with the top bit set on every byte but the last (X.690 §8.1.2.4).
-    /// </summary>
-    /// <param name="elementStart">Offset of the identifier, for error messages.</param>
-    /// <param name="tagNumber">The tag number.</param>
-    private bool TryReadMultiByteTagNumber(long elementStart, out int tagNumber)
-    {
-        tagNumber = 0;
-        long number = 0;
-        int octet;
-        do
-        {
-            octet = _source.ReadByte();
-            if (octet == -1)
-                return FailRead(new ParseFailure(ParseFailureKind.IdentifierTruncated, elementStart));
-            // A leading 0x80 only adds a zero digit (§8.1.2.4.2 c).
-            if (number == 0 && octet == Ber.LONG_FORM_LENGTH_FLAG)
-                return FailRead(new ParseFailure(ParseFailureKind.NonMinimalTagNumber, elementStart));
-            number = (number << 7) | (uint)(octet & ~Ber.LONG_FORM_LENGTH_FLAG);
-            if (number > int.MaxValue)
-                return FailRead(new ParseFailure(ParseFailureKind.TagNumberTooLarge, elementStart));
-        }
-        while ((octet & Ber.LONG_FORM_LENGTH_FLAG) != 0);
-
-        // Numbers up to 30 must use the single-byte form (§8.1.2.2).
-        if (number < Ber.TAG_NUMBER_MASK)
-            return FailRead(new ParseFailure(ParseFailureKind.NonMinimalTagNumber, elementStart));
-        tagNumber = (int)number;
-        return true;
-    }
-
-    /// <summary>Reads the length bytes that follow an identifier.</summary>
-    /// <param name="elementStart">Offset of the identifier, for error messages.</param>
-    /// <param name="contentLength">The content length, or <see langword="null"/> for indefinite length.</param>
-    /// <param name="isDer">The length is definite and in the shortest form, as DER requires.</param>
-    private bool TryReadLength(long elementStart, out long? contentLength, out bool isDer)
-    {
-        contentLength = null;
-        isDer = false;
-        var first = _source.ReadByte();
-        if (first == -1)
-            return FailRead(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
-
-        if ((first & Ber.LONG_FORM_LENGTH_FLAG) == 0)
-        {
-            contentLength = first; // short form: the byte is the length
-            isDer = true;
-            return true;
-        }
-
-        var octetCount = first & Ber.LENGTH_OCTET_COUNT_MASK;
-        if (octetCount == 0)
-            return true; // indefinite length
-        if (octetCount > Ber.MAX_LENGTH_OCTETS)
-            return FailRead(new ParseFailure(ParseFailureKind.TooManyLengthOctets, elementStart, octetCount));
-
-        long length = 0;
-        for (int i = 0; i < octetCount; i++)
-        {
-            var octet = _source.ReadByte();
-            if (octet == -1)
-                return FailRead(new ParseFailure(ParseFailureKind.LengthTruncated, elementStart));
-            if (i == 0)
-                isDer = octet != 0; // a leading zero octet means fewer octets would do
-            length = (length << 8) | (uint)octet;
-        }
-        isDer &= length >= 0x80; // shorter lengths must use the short form
-
-        // Content is read into a byte[], so lengths are limited to what an array can index.
-        if (length > int.MaxValue)
-            return FailRead(new ParseFailure(ParseFailureKind.LengthTooLarge, elementStart));
-
-        contentLength = length;
-        return true;
-    }
-
-    /// <summary>
-    /// Checks the element that just completed against the previous child when the innermost open element is a SET
-    /// inside an encapsulation probe: Serialize writes SET children in DER order (X.690 §11.6), so children in any
-    /// other order would change the OCTET STRING's value.
-    /// </summary>
-    private bool IsInDerSetOrder()
-    {
-        ref var parent = ref _openElements.Last;
-        if (!parent.RequiresDer || _nodes[parent.NodeIndex].Identifier != Ber.SET)
-            return true;
-
-        var end = _source.Position;
-        if (parent.ChildCount > 0
-            && CompareEncodings(parent.PreviousChildStart, parent.PreviousChildEnd, _completedElementStart, end) > 0)
-        {
-            return false;
-        }
-        parent.PreviousChildStart = _completedElementStart;
-        parent.PreviousChildEnd = end;
-        return true;
-    }
-
-    /// <summary>
-    /// Compares two encodings in the input as octet strings, the shorter one padded with zero bytes. Reads byte by
-    /// byte without allocating; the order is almost always settled by the first bytes.
-    /// </summary>
-    private int CompareEncodings(long aStart, long aEnd, long bStart, long bEnd)
-    {
-        var resume = _source.Position;
-        long aLength = aEnd - aStart, bLength = bEnd - bStart, common = Math.Min(aLength, bLength);
-        var result = 0;
-        for (long i = 0; i < common && result == 0; i++)
-        {
-            _source.Position = aStart + i;
-            var a = _source.ReadByte();
-            _source.Position = bStart + i;
-            result = a - _source.ReadByte();
-        }
-        if (result == 0 && aLength != bLength)
-        {
-            // The longer one is greater exactly when its remaining bytes are not all padding zeros.
-            var (longerStart, longerLength, sign) = aLength > bLength ? (aStart, aLength, 1) : (bStart, bLength, -1);
-            _source.Position = longerStart + common;
-            for (long i = common; i < longerLength && result == 0; i++)
-            {
-                if (_source.ReadByte() != 0)
-                    result = sign;
-            }
-        }
-        _source.Position = resume;
-        return result;
     }
 
     /// <summary>Offset that the element being scanned may not cross; see <see cref="OpenElement.Limit"/>.</summary>
@@ -527,12 +251,5 @@ internal ref struct StructureScanner<TSource>
     {
         _failure = failure;
         return ElementScanResult.Failed;
-    }
-
-    /// <summary>Records why reading an identifier or length failed.</summary>
-    private bool FailRead(ParseFailure failure)
-    {
-        _failure = failure;
-        return false;
     }
 }

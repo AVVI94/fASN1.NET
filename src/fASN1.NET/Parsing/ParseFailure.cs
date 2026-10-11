@@ -15,6 +15,9 @@ namespace fASN1.NET.Parsing;
 /// <param name="tagNumber">Tag number of the tag the message names.</param>
 internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long value = 0, string? tagName = null, int identifier = -1, int tagNumber = 0)
 {
+    /// <summary>What went wrong.</summary>
+    public ParseFailureKind Kind => kind;
+
     /// <summary>Formats the message, naming tags as <paramref name="factory"/> names them.</summary>
     public string ToMessage(Factory.ITagFactory factory)
     {
@@ -40,6 +43,7 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
         ParseFailureKind.LengthTooLarge => $"Length of the element at offset {offset} is too large",
         ParseFailureKind.NonDerLengthInOctetString => $"Length of the element at offset {offset} is not in DER form, so the OCTET STRING holding it is kept as raw bytes",
         ParseFailureKind.SetNotInDerOrderInOctetString => $"The element at offset {offset} is out of DER order in its SET, so the OCTET STRING holding it is kept as raw bytes",
+        ParseFailureKind.EndOfContentsInOctetString => $"End-of-contents marker at offset {offset} cannot be a value, so the OCTET STRING holding it is kept as raw bytes",
         ParseFailureKind.InvalidStringSegment => $"Segment at offset {offset} of a constructed string is not {tagName}",
         ParseFailureKind.InvalidBitStringSegment => $"BIT STRING segment at offset {offset} has an invalid unused-bits count; only the last segment may have unused bits",
         ParseFailureKind.ConstructedStringInOctetString => $"The element at offset {offset} is a constructed string, which DER does not allow, so the OCTET STRING holding it is kept as raw bytes",
