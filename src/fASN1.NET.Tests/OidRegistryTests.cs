@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using fASN1.NET.Oid;
 
 namespace fASN1.NET.Tests;
@@ -64,5 +65,41 @@ public class OidRegistryTests
         Assert.Equal("testOid", OID.GetOrCreate(VALUE).FriendlyName);
         Assert.Equal("testOid", OID.GetOrCreate(OidEncoder.GetBytes(VALUE)).FriendlyName);
         Assert.Throws<ArgumentNullException>(() => OID.Register(null!));
+    }
+
+    [Fact]
+    public void OidDictionary_CannotBeCastToAWritableDictionary()
+    {
+        // The registry is a ConcurrentDictionary; handing it out as IReadOnlyDictionary let a cast write to it.
+        var dictionary = OID.OidDictionary;
+
+        Assert.False(dictionary is ConcurrentDictionary<string, OID>);
+        var writable = Assert.IsAssignableFrom<IDictionary<string, OID>>(dictionary);
+        Assert.True(writable.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => writable["1.3.6.1.4.1.66666.1"] = new OID("1.3.6.1.4.1.66666.1", "x", "y"));
+        Assert.False(OID.OidDictionary.ContainsKey("1.3.6.1.4.1.66666.1"));
+    }
+
+    [Fact]
+    public void OidDictionary_ShowsOidsRegisteredLater_AndEnumeratesWhileOthersRegister()
+    {
+        var dictionary = OID.OidDictionary;
+
+        Parallel.For(0, 16, thread =>
+        {
+            for (int i = 0; i < 200; i++)
+            {
+                if (thread % 2 == 0)
+                {
+                    OID.Register(new OID($"1.3.6.1.4.1.55555.{thread}.{i}", "concurrent", "OidRegistryTests"));
+                }
+                else
+                {
+                    Assert.All(dictionary, pair => Assert.Equal(pair.Key, pair.Value.Value));
+                }
+            }
+        });
+
+        Assert.Equal("concurrent", dictionary["1.3.6.1.4.1.55555.0.199"].FriendlyName);
     }
 }

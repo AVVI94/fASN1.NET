@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 
 namespace fASN1.NET.Oid;
@@ -107,9 +108,11 @@ public class OID
     }
 
     /// <summary>
-    /// The registered OIDs, keyed by value, for example "2.5.29.29". Use <see cref="Register"/> to add one.
+    /// The registered OIDs, keyed by value, for example "2.5.29.29". Use <see cref="Register"/> to add one: this is a
+    /// read-only view of the registry, which cannot be cast to a writable dictionary, and it can be read and
+    /// enumerated while other threads register OIDs.
     /// </summary>
-    public static IReadOnlyDictionary<string, OID> OidDictionary => KnownOids.Registry;
+    public static IReadOnlyDictionary<string, OID> OidDictionary => KnownOids.ReadOnlyRegistry;
 
     /// <summary>
     /// Returns the registered OID with this value, or a new OID with no friendly name when none is registered.
@@ -153,6 +156,8 @@ public class OID
     private static class KnownOids
     {
         public static readonly ConcurrentDictionary<string, OID> Registry = new(Create(), StringComparer.Ordinal);
+
+        public static readonly ReadOnlyDictionary<string, OID> ReadOnlyRegistry = new(Registry);
 
         private static Dictionary<string, OID> Create() => new()
         {

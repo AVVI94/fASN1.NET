@@ -16,7 +16,8 @@ unsupported by design: only version 3 can carry extensions.
 - **Large allocations from corrupted lengths.** A declared length is checked against the input before its buffer
   is allocated; lengths above `int.MaxValue` are rejected instead of wrapping around.
 - **OID registry.** `OID.GetOrCreate` wrote to a shared `Dictionary` from every thread and kept every OID ever seen
-  in input. The registry is now thread-safe and unknown OIDs are not added to it.
+  in input. The registry is now thread-safe and unknown OIDs are not added to it. `OID.OidDictionary` is a
+  read-only view of it; it used to be the registry itself, which a cast to `IDictionary` could modify.
 
 ### Breaking changes
 
