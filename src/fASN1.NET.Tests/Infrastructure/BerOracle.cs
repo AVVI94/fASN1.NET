@@ -54,8 +54,8 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
     /// <summary>BIT STRING, OCTET STRING, the restricted character strings and the times may be constructed in BER.</summary>
     private static bool IsStringType(int number) => number is 3 or 4 or 7 or 12 or (>= 18 and <= 28) or 30;
 
-    /// <summary>Appends the bits of every primitive BIT STRING segment of <paramref name="encoded"/>, without its unused-bits byte.</summary>
-    private static void AppendSegmentData(ReadOnlySpan<byte> encoded, List<byte> data)
+    /// <summary>Appends the bits of every primitive BIT STRING fragment of <paramref name="encoded"/>, without its unused-bits byte.</summary>
+    private static void AppendFragmentData(ReadOnlySpan<byte> encoded, List<byte> data)
     {
         AsnDecoder.ReadEncodedValue(encoded, AsnEncodingRules.BER, out var offset, out var length, out _);
         if ((encoded[0] & 0x20) == 0)
@@ -67,7 +67,7 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
         while (!content.IsEmpty && !(content[0] == 0 && content[1] == 0))
         {
             AsnDecoder.ReadEncodedValue(content, AsnEncodingRules.BER, out _, out _, out var consumed);
-            AppendSegmentData(content.Slice(0, consumed), data);
+            AppendFragmentData(content.Slice(0, consumed), data);
             content = content.Slice(consumed);
         }
     }
@@ -77,14 +77,14 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
     {
         if (number == 3)
         {
-            // .NET validates the segments, but clears the unused bits; like a primitive BIT STRING, the value keeps
-            // them as encoded, so the bits are taken from the segments themselves.
+            // .NET validates the fragments, but clears the unused bits; like a primitive BIT STRING, the value keeps
+            // them as encoded, so the bits are taken from the fragments themselves.
             AsnDecoder.ReadBitString(encoded, AsnEncodingRules.BER, out var unusedBits, out _);
             var data = new List<byte>();
-            AppendSegmentData(encoded, data);
+            AppendFragmentData(encoded, data);
             return [(byte)unusedBits, .. data];
         }
-        // The segments of every other string type are OCTET STRINGs (X.690 §8.23.6), but .NET reads only OCTET STRINGs
+        // The fragments of every other string type are OCTET STRINGs (X.690 §8.23.6), but .NET reads only OCTET STRINGs
         // that way, so a copy relabelled as a constructed OCTET STRING is read instead.
         byte[] relabelled = [0x24, .. encoded[1..]];
         return AsnDecoder.ReadOctetString(relabelled, AsnEncodingRules.BER, out _);

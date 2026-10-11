@@ -28,7 +28,7 @@ public class CmsRegressionTests
         Assert.Equal(5, signedData.Children.Count);
 
         var payload = Assert.IsType<OctetString>(signedData.Children[2].Children[1].Children[0]);
-        Assert.Equal(1815, payload.Content.Length); // joined from segments of 1000 and 815 bytes
+        Assert.Equal(1815, payload.Content.Length); // joined from fragments of 1000 and 815 octets
         var xml = Encoding.UTF8.GetString(payload.Content);
         Assert.StartsWith("<?xml", xml);
         Assert.Contains("<Email>novak@test.cz</Email>", xml);

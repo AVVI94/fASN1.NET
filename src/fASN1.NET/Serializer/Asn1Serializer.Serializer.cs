@@ -13,102 +13,104 @@ public static partial class Asn1Serializer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Lengths are written in DER form (definite, shortest), and the children of every SET are written in DER order
-    /// (X.690 §11.6): ascending by their complete encodings, compared as octet strings with the shorter one padded
-    /// with zero bytes. Without a schema a SET cannot be told from a SET OF, so a SET with fixed fields is ordered the
-    /// same way; this matches the tag order of §10.3 unless two fields differ only in the constructed bit. A tree
-    /// parsed from DER serializes back to the same bytes.
+    /// Lengths are written in the definite form with the fewest octets, as DER requires, and the components of every
+    /// SET in DER order (X.690 §11.6): ascending by their encodings, compared as octet strings with the shorter one
+    /// padded with zero octets. Without a schema a SET cannot be told from a SET OF, so a SET with fixed fields is
+    /// ordered the same way; this matches the tag order of §10.3 unless two components differ only in being primitive
+    /// or constructed. A tree parsed from DER serializes back to the same octets.
     /// </para>
     /// <para>
-    /// The identifier is built from <see cref="ITag.TagClass"/> and <see cref="ITag.TagNumber"/>, in the multi-byte form
-    /// for numbers of 31 and up. An element with children gets the constructed bit, except a universal BIT STRING or OCTET STRING, whose children are the
-    /// encoding they hold as their value; a BIT STRING then gets a leading unused-bits byte of 0. An element without
-    /// children gets the constructed bit when <see cref="ITag.IsConstructed"/> says so.
+    /// The identifier octets are built from <see cref="ITag.TagClass"/> and <see cref="ITag.TagNumber"/>, in the
+    /// high-tag-number form for numbers of 31 and up. A tag with children is encoded constructed, except a universal
+    /// BIT STRING or OCTET STRING, whose children are the encodings it encapsulates as its value; a BIT STRING then gets
+    /// an unused-bits octet of 0. A tag without children is encoded constructed when <see cref="ITag.IsConstructed"/>
+    /// says so.
     /// </para>
     /// </remarks>
     /// <param name="tag">The ASN.1 tag to serialize.</param>
     /// <returns>The byte array representation of the serialized ASN.1 tag.</returns>
     /// <exception cref="ArgumentException">
-    /// An element has a class outside 0 to 3 or a negative tag number, or has both content and children.
+    /// A tag has a class outside 0 to 3 or a negative tag number, or has both contents and children.
     /// </exception>
     public static byte[] Serialize(ITag tag)
     {
-        // The encoding is the pre-order sequence of every element's header followed, for leaves, by its content.
-        // Pass 1 lists the elements in pre-order; pass 2 sizes them bottom-up (children follow their parent in the
-        // list, so walking it backwards sizes every child before its parent); pass 3 writes front to back.
+        // The encoding is, in pre-order, every tag's identifier and length octets followed, for a primitive encoding, by
+        // its contents octets. Pass 1 lists the tags in pre-order; pass 2 computes the lengths bottom-up (children
+        // follow their parent in the list, so walking it backwards measures every child before its parent); pass 3
+        // writes front to back.
         // No pass recurses, so the depth of the tree is limited only by memory.
-        var elements = new List<ITag>();
-        var identifiers = new List<byte>();
+        var tags = new List<ITag>();
+        var identifierOctets = new List<byte>();
         var tagNumbers = new List<int>();
         var parents = new List<int>();
-        var contentLengths = new List<int>();
+        var contentsLengths = new List<int>();
         var pending = new Stack<(ITag Tag, int Parent)>();
         pending.Push((tag, -1));
         while (pending.Count > 0)
         {
             var (current, parent) = pending.Pop();
-            var index = elements.Count;
+            var index = tags.Count;
             var childCount = TagBase.GetChildCount(current);
             if (childCount > 0 && current.Content.Length > 0)
             {
                 throw new ArgumentException(
-                    $"{current.TagName} has both content and children; an element is encoded from one or the other.", nameof(tag));
+                    $"{current.TagName} has both contents and children; an encoding has contents octets or nested encodings, not both.", nameof(tag));
             }
 
-            var identifier = Identifier(current, childCount > 0);
-            elements.Add(current);
-            identifiers.Add(identifier);
+            var identifierOctet = FirstIdentifierOctet(current, childCount > 0);
+            tags.Add(current);
+            identifierOctets.Add(identifierOctet);
             tagNumbers.Add(current.TagNumber);
             parents.Add(parent);
-            contentLengths.Add(childCount > 0 ? (identifier == BIT_STRING ? 1 : 0) : current.Content.Length);
+            contentsLengths.Add(childCount > 0 ? (identifierOctet == BIT_STRING ? 1 : 0) : current.Content.Length);
             for (int i = childCount - 1; i >= 0; i--)
             {
                 pending.Push((TagBase.GetChild(current, i), index));
             }
         }
 
-        var sizes = new int[elements.Count];
-        for (int i = elements.Count - 1; i >= 0; i--)
+        var encodingLengths = new int[tags.Count];
+        for (int i = tags.Count - 1; i >= 0; i--)
         {
-            sizes[i] = checked(IdentifierSize(tagNumbers[i]) + LengthSize(contentLengths[i]) + contentLengths[i]);
+            encodingLengths[i] = checked(IdentifierOctetCount(tagNumbers[i]) + LengthOctetCount(contentsLengths[i]) + contentsLengths[i]);
             if (i > 0)
-                contentLengths[parents[i]] = checked(contentLengths[parents[i]] + sizes[i]);
+                contentsLengths[parents[i]] = checked(contentsLengths[parents[i]] + encodingLengths[i]);
         }
 
-        var result = new byte[sizes[0]];
-        var starts = new int[elements.Count];
+        var result = new byte[encodingLengths[0]];
+        var encodingStarts = new int[tags.Count];
         var position = 0;
-        for (int i = 0; i < elements.Count; i++)
+        for (int i = 0; i < tags.Count; i++)
         {
-            starts[i] = position;
-            position += WriteIdentifier(identifiers[i], tagNumbers[i], result, position);
-            position += WriteLength(contentLengths[i], result, position);
-            if (TagBase.GetChildCount(elements[i]) == 0)
+            encodingStarts[i] = position;
+            position += WriteIdentifierOctets(identifierOctets[i], tagNumbers[i], result, position);
+            position += WriteLengthOctets(contentsLengths[i], result, position);
+            if (TagBase.GetChildCount(tags[i]) == 0)
             {
-                var content = elements[i].Content;
-                content.CopyTo(result, position);
-                position += content.Length;
+                var contents = tags[i].Content;
+                contents.CopyTo(result, position);
+                position += contents.Length;
             }
-            else if (identifiers[i] == BIT_STRING)
+            else if (identifierOctets[i] == BIT_STRING)
             {
-                result[position++] = 0x00; // no unused bits: the children are whole bytes
+                result[position++] = 0x00; // no unused bits: the encapsulated encodings are whole octets
             }
         }
-        SortSets(result, identifiers, parents, starts, sizes, contentLengths);
+        SortSets(result, identifierOctets, parents, encodingStarts, encodingLengths, contentsLengths);
         return result;
     }
 
     /// <summary>
-    /// Puts the children of every SET in <paramref name="encoding"/> in DER order by moving their encodings, which
-    /// lie side by side in the SET's content. Elements are in pre-order, so walking SETs from the last one handles
-    /// every SET inside another before the one containing it; reordering inside a child does not move the child.
+    /// Puts the components of every SET in <paramref name="encoding"/> in DER order by moving their encodings, which
+    /// lie side by side in the SET's contents octets. Tags are in pre-order, so walking SETs from the last one handles
+    /// every SET inside another before the one enclosing it; reordering inside a component does not move the component.
     /// </summary>
-    private static void SortSets(byte[] encoding, List<byte> identifiers, List<int> parents, int[] starts, int[] sizes, List<int> contentLengths)
+    private static void SortSets(byte[] encoding, List<byte> identifierOctets, List<int> parents, int[] encodingStarts, int[] encodingLengths, List<int> contentsLengths)
     {
         Dictionary<int, List<int>>? setChildren = null;
-        for (int i = 1; i < identifiers.Count; i++)
+        for (int i = 1; i < identifierOctets.Count; i++)
         {
-            if (identifiers[parents[i]] != SET)
+            if (identifierOctets[parents[i]] != SET)
                 continue;
             setChildren ??= [];
             if (!setChildren.TryGetValue(parents[i], out var children))
@@ -127,7 +129,7 @@ public static partial class Asn1Serializer
             var isSorted = true;
             for (int i = 0; i < children.Count; i++)
             {
-                ranges[i] = (starts[children[i]], sizes[children[i]]);
+                ranges[i] = (encodingStarts[children[i]], encodingLengths[children[i]]);
                 if (i > 0 && CompareEncodings(encoding, ranges[i - 1], ranges[i]) > 0)
                     isSorted = false;
             }
@@ -135,35 +137,35 @@ public static partial class Asn1Serializer
                 continue;
 
             Array.Sort(ranges, (a, b) => CompareEncodings(encoding, a, b));
-            var sorted = new byte[contentLengths[set]];
+            var sorted = new byte[contentsLengths[set]];
             var offset = 0;
             foreach (var (start, length) in ranges)
             {
                 Buffer.BlockCopy(encoding, start, sorted, offset, length);
                 offset += length;
             }
-            Buffer.BlockCopy(sorted, 0, encoding, starts[children[0]], sorted.Length);
+            Buffer.BlockCopy(sorted, 0, encoding, encodingStarts[children[0]], sorted.Length);
         }
     }
 
     /// <summary>
     /// Compares two encodings as X.690 §11.6 orders SET OF components: as octet strings, the shorter one padded at
-    /// its end with zero bytes.
+    /// its end with zero octets.
     /// </summary>
-    internal static int CompareEncodings(byte[] bytes, (int Start, int Length) a, (int Start, int Length) b)
+    internal static int CompareEncodings(byte[] octets, (int Start, int Length) a, (int Start, int Length) b)
     {
         var common = Math.Min(a.Length, b.Length);
         for (int i = 0; i < common; i++)
         {
-            var difference = bytes[a.Start + i] - bytes[b.Start + i];
+            var difference = octets[a.Start + i] - octets[b.Start + i];
             if (difference != 0)
                 return difference;
         }
-        // The longer one is greater exactly when its remaining bytes are not all padding zeros.
+        // The longer one is greater exactly when its remaining octets are not all padding zeros.
         var (longer, sign) = a.Length > b.Length ? (a, 1) : (b, -1);
         for (int i = common; i < longer.Length; i++)
         {
-            if (bytes[longer.Start + i] != 0)
+            if (octets[longer.Start + i] != 0)
                 return sign;
         }
         return 0;
@@ -174,8 +176,8 @@ public static partial class Asn1Serializer
     private const byte CONSTRUCTED_FLAG = 0x20;
     private const int TAG_NUMBER_MASK = 0x1F;
 
-    /// <summary>The first identifier byte of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
-    private static byte Identifier(ITag tag, bool hasChildren)
+    /// <summary>The first identifier octet of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
+    private static byte FirstIdentifierOctet(ITag tag, bool hasChildren)
     {
         var tagClass = tag.TagClass;
         var number = tag.TagNumber;
@@ -186,15 +188,15 @@ public static partial class Asn1Serializer
         }
 
         // A universal BIT STRING or OCTET STRING with children holds them as its encapsulated value, so it stays
-        // primitive, unless it was created constructed: a constructed string (segments) is an Unknown tag.
+        // primitive, unless it was created constructed: an Unknown tag created with the constructed bit stays so.
         var isConstructed = hasChildren
             ? !(tagClass == 0 && number is (int)Tag.BitString or (int)Tag.OctetString) || tag is Unknown { HasConstructedIdentifier: true }
             : tag.IsConstructed;
         return (byte)((tagClass << 6) | (isConstructed ? CONSTRUCTED_FLAG : 0) | Math.Min(number, TAG_NUMBER_MASK));
     }
 
-    /// <summary>Bytes the identifier takes: one, or for numbers of 31 and up one more per 7 bits of the number.</summary>
-    private static int IdentifierSize(int tagNumber)
+    /// <summary>Number of identifier octets: one, or in the high-tag-number form one more per 7 bits of the number.</summary>
+    private static int IdentifierOctetCount(int tagNumber)
     {
         if (tagNumber < TAG_NUMBER_MASK)
             return 1;
@@ -205,13 +207,13 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Writes the identifier: the first byte, then for numbers of 31 and up the number in base 128, most significant
-    /// digit first, with the top bit set on every byte but the last (X.690 §8.1.2.4).
+    /// Writes the identifier octets: the first, then in the high-tag-number form the number in base 128, most
+    /// significant digit first, with bit 8 set on every subsequent octet but the last (X.690 §8.1.2.4).
     /// </summary>
-    private static int WriteIdentifier(byte first, int tagNumber, byte[] destination, int offset)
+    private static int WriteIdentifierOctets(byte first, int tagNumber, byte[] destination, int offset)
     {
         destination[offset] = first;
-        var size = IdentifierSize(tagNumber);
+        var size = IdentifierOctetCount(tagNumber);
         for (int i = size - 1; i > 0; i--)
         {
             destination[offset + i] = (byte)((tagNumber & 0x7F) | (i == size - 1 ? 0 : 0x80));
@@ -220,11 +222,14 @@ public static partial class Asn1Serializer
         return size;
     }
 
-    private static int LengthSize(int length) => length < 0x80 ? 1 : 1 + LengthOctetCount(length);
+    /// <summary>Number of length octets in the definite form with the fewest octets (X.690 §10.1).</summary>
+    private static int LengthOctetCount(int length) => length < 0x80 ? 1 : 1 + LongFormOctetCount(length);
 
-    private static int LengthOctetCount(int length) => length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
+    /// <summary>Number of subsequent length octets in the long form.</summary>
+    private static int LongFormOctetCount(int length) => length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
 
-    private static int WriteLength(int length, byte[] destination, int offset)
+    /// <summary>Writes the length octets: the short form below 128, otherwise the long form (§8.1.3.4, §8.1.3.5).</summary>
+    private static int WriteLengthOctets(int length, byte[] destination, int offset)
     {
         if (length < 0x80)
         {
@@ -232,8 +237,8 @@ public static partial class Asn1Serializer
             return 1;
         }
 
-        // Long form: 0x80 | number of length octets, then the length big-endian with no leading zeros.
-        var octets = LengthOctetCount(length);
+        // Long form: bit 8 set and the number of subsequent octets, then the length, most significant octet first.
+        var octets = LongFormOctetCount(length);
         destination[offset] = (byte)(0x80 | octets);
         for (int i = octets; i > 0; i--)
         {
@@ -285,8 +290,8 @@ public static partial class Asn1Serializer
 
         var lastObjectIdentifier = "";
         var cache = new IndentationCache(options.IndentationString);
-        // Pre-order walk with an explicit stack: elements come out in the order a recursive walk would give, so an
-        // OBJECT IDENTIFIER still names the elements after it, but a deep tree cannot overflow the call stack.
+        // Pre-order walk with an explicit stack: tags come out in the order a recursive walk would give, so an
+        // OBJECT IDENTIFIER still names the tags after it, but a deep tree cannot overflow the call stack.
         var pending = new Stack<(ITag Tag, int Level)>();
         pending.Push((tag, 0));
         while (pending.Count > 0)

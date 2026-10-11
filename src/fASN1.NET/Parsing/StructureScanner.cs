@@ -3,253 +3,259 @@ using System;
 namespace fASN1.NET.Parsing;
 
 /// <summary>
-/// First pass of the parser: reads every identifier and length, validates the structure and decides the
-/// shape of the final tree, without creating any tag.
+/// First pass of the parser: reads the identifier and length octets of every encoding, validates the structure and
+/// decides the shape of the final tree, without creating any tag.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The result is the list of <see cref="Nodes"/> in pre-order. Content bytes are skipped, not read;
-/// <see cref="TreeBuilder"/> reads the ones that end up in the tree.
+/// The result is the list of <see cref="Nodes"/> in pre-order. Contents octets of primitive encodings are skipped, not
+/// read; <see cref="TreeBuilder"/> reads the ones that end up in the tree.
 /// </para>
 /// <para>
-/// Elements whose content is being read as nested elements are kept on an explicit stack of
-/// <see cref="OpenElement"/>s, so nesting depth does not consume call stack space. Every step of the scan is one
-/// of: read the next element, add a finished element to its parent, or close the innermost open element.
+/// Encodings whose contents are being read as nested encodings are kept on an explicit stack of
+/// <see cref="EnclosingEncoding"/>s, so nesting depth does not consume call stack space. Every step of the scan is one
+/// of: read the next encoding, add a complete encoding to the one enclosing it, or leave the contents of the innermost
+/// enclosing encoding.
 /// </para>
 /// <para>
-/// Open elements come in three kinds (<see cref="OpenElementKind"/>): constructed elements; primitive OCTET STRINGs
-/// tried as nested elements ("encapsulation probes", <c>StructureScanner.Probes.cs</c>), which roll back to raw bytes
-/// if that fails; and constructed strings, whose segments are joined (<c>StructureScanner.Strings.cs</c>).
+/// Contents are read as nested encodings for three reasons (<see cref="EnclosingEncodingKind"/>): the encoding is
+/// constructed; it is a primitive OCTET STRING that may encapsulate DER encodings
+/// (<c>StructureScanner.Encapsulation.cs</c>), kept as raw contents if it does not; or it is a string in the
+/// constructed encoding, whose fragments are joined (<c>StructureScanner.ConstructedStrings.cs</c>).
 /// </para>
 /// </remarks>
 internal ref partial struct StructureScanner<TSource>
     where TSource : struct, IByteSource
 {
-    private const int INITIAL_OPEN_ELEMENT_CAPACITY = 16;
+    private const int INITIAL_ENCLOSING_CAPACITY = 16;
     private const int INITIAL_NODE_CAPACITY = 128;
-    private const int INITIAL_SEGMENT_CAPACITY = 16;
+    private const int INITIAL_FRAGMENT_CAPACITY = 16;
 
     private TSource _source;
-    private PooledList<OpenElement> _openElements;
+    private PooledList<EnclosingEncoding> _enclosing;
     private PooledList<ScannedNode> _nodes;
-    private PooledList<ContentSegment> _segments;
+    private PooledList<ContentsFragment> _fragments;
     private ParseFailure _failure;
 
-    /// <param name="source">The input, positioned at the element to scan. The scanner reads a copy.</param>
+    /// <param name="source">The input, positioned at the encoding to scan. The scanner reads a copy.</param>
     public StructureScanner(TSource source)
     {
         _source = source;
-        _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
+        _enclosing = new PooledList<EnclosingEncoding>(INITIAL_ENCLOSING_CAPACITY, clearOnRemove: false);
         _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
-        _segments = new PooledList<ContentSegment>(INITIAL_SEGMENT_CAPACITY, clearOnRemove: false);
+        _fragments = new PooledList<ContentsFragment>(INITIAL_FRAGMENT_CAPACITY, clearOnRemove: false);
         _failure = default;
     }
 
     /// <summary>The nodes of the final tree in pre-order, once <see cref="TryScan"/> has succeeded.</summary>
     public readonly ReadOnlySpan<ScannedNode> Nodes => _nodes.AsSpan();
 
-    /// <summary>The segments of the joined strings among <see cref="Nodes"/>.</summary>
-    public readonly ReadOnlySpan<ContentSegment> Segments => _segments.AsSpan();
+    /// <summary>The fragments of the constructed strings among <see cref="Nodes"/>.</summary>
+    public readonly ReadOnlySpan<ContentsFragment> Fragments => _fragments.AsSpan();
 
     /// <summary>Why <see cref="TryScan"/> failed.</summary>
     public readonly ParseFailure Failure => _failure;
 
-    /// <summary>Offset just past the scanned element, once <see cref="TryScan"/> has succeeded.</summary>
+    /// <summary>Offset just past the scanned encoding, once <see cref="TryScan"/> has succeeded.</summary>
     public readonly long Position => _source.Position;
 
-    /// <summary>Scans the element at the current position and all of its descendants.</summary>
+    /// <summary>Scans the encoding at the current position and all the encodings nested in it.</summary>
     public bool TryScan()
     {
-        var result = ScanElement();
-        while (_openElements.Count > 0 || result == ElementScanResult.ChildrenOpened)
+        var result = ScanEncoding();
+        while (_enclosing.Count > 0 || result == ScanResult.ContentsEntered)
         {
             result = result switch
             {
-                ElementScanResult.ChildrenOpened => ContinueInnermostElement(),
-                ElementScanResult.Succeeded => AddChildToInnermostElement(),
-                ElementScanResult.EndOfContentsRead => CloseElement(_openElements.RemoveLast(), childrenSucceeded: true),
-                _ => CloseElement(_openElements.RemoveLast(), childrenSucceeded: false),
+                ScanResult.ContentsEntered => ContinueInnermostContents(),
+                ScanResult.Succeeded => AddNestedEncoding(),
+                ScanResult.EndOfContentsRead => LeaveContents(_enclosing.RemoveLast(), nestedEncodingsValid: true),
+                _ => LeaveContents(_enclosing.RemoveLast(), nestedEncodingsValid: false),
             };
         }
-        return result == ElementScanResult.Succeeded;
+        return result == ScanResult.Succeeded;
     }
 
     /// <summary>Returns the rented buffers.</summary>
     public void Dispose()
     {
-        _openElements.Dispose();
+        _enclosing.Dispose();
         _nodes.Dispose();
-        _segments.Dispose();
+        _fragments.Dispose();
     }
 
     /// <summary>
-    /// Reads the next element. A leaf is complete once its content has been skipped; an element whose content is
-    /// read as nested elements is opened.
+    /// Reads the next encoding. A primitive encoding is complete once its contents have been skipped; an encoding
+    /// whose contents are read as nested encodings is entered.
     /// </summary>
-    private ElementScanResult ScanElement()
+    private ScanResult ScanEncoding()
     {
         var start = _source.Position;
-        var insideIndefiniteLength = false;
-        if (_openElements.Count > 0)
+        var insideIndefiniteForm = false;
+        if (_enclosing.Count > 0)
         {
-            ref var parent = ref _openElements.Last;
-            parent.ChildStart = start;
-            insideIndefiniteLength = parent.IsIndefiniteLength;
-            // The enclosing definite-length element ends here, so the end-of-contents marker is missing.
-            if (insideIndefiniteLength && start >= parent.Limit)
-                return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, parent.ContentStart));
+            ref var enclosing = ref _enclosing.Last;
+            enclosing.NestedEncodingStart = start;
+            insideIndefiniteForm = enclosing.IsIndefiniteForm;
+            // A definite-form ancestor's contents end here, so the end-of-contents octets are missing.
+            if (insideIndefiniteForm && start >= enclosing.ContentsBound)
+                return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, enclosing.ContentsStart));
         }
 
-        if (!ElementHeaderReader.TryRead(ref _source, out var header, out var failure))
+        if (!IdentifierAndLengthReader.TryRead(ref _source, out var encoding, out var failure))
         {
-            return Fail(insideIndefiniteLength && failure.Kind == ParseFailureKind.UnexpectedEndOfData
-                ? new ParseFailure(ParseFailureKind.MissingEndOfContents, _openElements.Last.ContentStart)
+            return Fail(insideIndefiniteForm && failure.Kind == ParseFailureKind.UnexpectedEndOfData
+                ? new ParseFailure(ParseFailureKind.MissingEndOfContents, _enclosing.Last.ContentsStart)
                 : failure);
         }
-        if (_source.Position > CurrentLimit)
-            return FailOutsideContainer();
+        if (_source.Position > CurrentContentsBound)
+            return FailCrossingContentsBound();
 
-        if (header.IsEndOfContents && insideIndefiniteLength)
+        if (encoding.IsEndOfContentsOctets && insideIndefiniteForm)
         {
-            return header.ContentLength == 0
-                ? ElementScanResult.EndOfContentsRead
-                : Fail(new ParseFailure(ParseFailureKind.InvalidEndOfContents, header.Start));
+            return encoding.ContentsLength == 0
+                ? ScanResult.EndOfContentsRead
+                : Fail(new ParseFailure(ParseFailureKind.InvalidEndOfContents, encoding.IdentifierStart));
         }
-        if (_openElements.Count > 0)
+        if (_enclosing.Count > 0)
         {
-            ref var parent = ref _openElements.Last;
-            if (parent.RequiresDer && !CheckDerForm(header, parent.Kind))
-                return ElementScanResult.Failed;
-            if (parent.Kind is OpenElementKind.ConstructedString or OpenElementKind.StringSegment)
-                return ScanStringSegment(header);
+            ref var enclosing = ref _enclosing.Last;
+            if (enclosing.MustBeDer && !CheckDerForm(encoding, enclosing.Kind))
+                return ScanResult.Failed;
+            if (enclosing.Kind is EnclosingEncodingKind.ConstructedString or EnclosingEncodingKind.ConstructedFragment)
+                return ScanFragment(encoding);
         }
 
-        var segmentTagNumber = Ber.StringSegmentTagNumber(header.Identifier);
-        if (segmentTagNumber != 0)
-            return OpenConstructedString(header, segmentTagNumber);
+        var fragmentTagNumber = Ber.FragmentTagNumber(encoding.IdentifierOctet);
+        if (fragmentTagNumber != 0)
+            return EnterConstructedString(encoding, fragmentTagNumber);
 
         var nodeIndex = _nodes.Add(new ScannedNode
         {
-            Identifier = header.Identifier,
-            TagNumber = header.TagNumber,
-            ContentStart = header.ContentStart,
-            ContentLength = header.ContentLength ?? 0,
-            IsIndefiniteLength = header.IsIndefiniteLength,
+            IdentifierOctet = encoding.IdentifierOctet,
+            TagNumber = encoding.TagNumber,
+            ContentsStart = encoding.ContentsStart,
+            ContentsLength = encoding.ContentsLength ?? 0,
+            IsIndefiniteForm = encoding.IsIndefiniteForm,
         });
-        if (Ber.IsConstructed(header.Identifier))
-            return Open(new OpenElement { Kind = OpenElementKind.Constructed, Header = header, NodeIndex = nodeIndex });
-        // Indefinite length is only valid for constructed elements, so such an OCTET STRING is not probed;
-        // skipping its content fails instead.
-        if (Ber.IsEncapsulationCandidate(header.Identifier) && !header.IsIndefiniteLength)
-            return Open(new OpenElement { Kind = OpenElementKind.EncapsulationProbe, Header = header, NodeIndex = nodeIndex });
-        return SkipContent(header);
+        if (Ber.IsConstructed(encoding.IdentifierOctet))
+            return EnterContents(new EnclosingEncoding { Kind = EnclosingEncodingKind.Constructed, IdentifierAndLength = encoding, NodeIndex = nodeIndex });
+        // The indefinite form is valid only for constructed encodings, so such an OCTET STRING is not entered;
+        // skipping its contents fails instead.
+        if (Ber.MayEncapsulate(encoding.IdentifierOctet) && !encoding.IsIndefiniteForm)
+            return EnterContents(new EnclosingEncoding { Kind = EnclosingEncodingKind.EncapsulatingOctetString, IdentifierAndLength = encoding, NodeIndex = nodeIndex });
+        return SkipContents(encoding);
     }
 
-    /// <summary>Starts reading an element's content as nested elements, unless its declared content cannot fit.</summary>
-    private ElementScanResult Open(OpenElement element)
+    /// <summary>Starts reading an encoding's contents as nested encodings, unless its declared contents cannot fit.</summary>
+    private ScanResult EnterContents(EnclosingEncoding enclosing)
     {
-        if (!element.IsIndefiniteLength)
+        if (!enclosing.IsIndefiniteForm)
         {
-            if (element.ContentEnd > _source.Length)
+            if (enclosing.ContentsEnd > _source.Length)
             {
-                _failure = new ParseFailure(ParseFailureKind.ContainerPastEndOfData, element.ContentStart, element.Header.ContentLength!.Value);
-                return CloseElement(element, childrenSucceeded: false);
+                _failure = new ParseFailure(ParseFailureKind.NestedContentsPastEndOfData, enclosing.ContentsStart, enclosing.IdentifierAndLength.ContentsLength!.Value);
+                return LeaveContents(enclosing, nestedEncodingsValid: false);
             }
-            if (element.ContentEnd > CurrentLimit)
+            if (enclosing.ContentsEnd > CurrentContentsBound)
             {
-                _failure = OutsideContainerFailure();
-                return CloseElement(element, childrenSucceeded: false);
+                _failure = CrossingContentsBoundFailure();
+                return LeaveContents(enclosing, nestedEncodingsValid: false);
             }
         }
 
-        element.Limit = element.IsIndefiniteLength ? CurrentLimit : element.ContentEnd;
-        element.LimitOwnerStart = element.IsIndefiniteLength ? CurrentLimitOwnerStart : element.ContentStart;
-        element.RequiresDer = element.Kind == OpenElementKind.EncapsulationProbe
-            || (_openElements.Count > 0 && _openElements.Last.RequiresDer);
-        _openElements.Add(element);
-        return ElementScanResult.ChildrenOpened;
+        enclosing.ContentsBound = enclosing.IsIndefiniteForm ? CurrentContentsBound : enclosing.ContentsEnd;
+        enclosing.ContentsBoundStart = enclosing.IsIndefiniteForm ? CurrentContentsBoundStart : enclosing.ContentsStart;
+        enclosing.MustBeDer = enclosing.Kind == EnclosingEncodingKind.EncapsulatingOctetString
+            || (_enclosing.Count > 0 && _enclosing.Last.MustBeDer);
+        _enclosing.Add(enclosing);
+        return ScanResult.ContentsEntered;
     }
 
-    /// <summary>The element just completed is the next child of the innermost open element.</summary>
-    private ElementScanResult AddChildToInnermostElement()
+    /// <summary>The encoding just completed is the next nested encoding of the innermost enclosing encoding.</summary>
+    private ScanResult AddNestedEncoding()
     {
-        ref var parent = ref _openElements.Last;
-        if (parent.RequiresDer && !CheckDerSetOrder(ref parent))
-            return ElementScanResult.Failed;
+        ref var enclosing = ref _enclosing.Last;
+        if (enclosing.MustBeDer && !CheckDerSetOrder(ref enclosing))
+            return ScanResult.Failed;
 
-        parent.PreviousChildStart = parent.ChildStart;
-        parent.ChildCount++;
-        return ContinueInnermostElement();
-    }
-
-    /// <summary>Reads the next child of the innermost open element, or closes it when its content is used up.</summary>
-    private ElementScanResult ContinueInnermostElement()
-    {
-        ref var innermost = ref _openElements.Last;
-        if (innermost.IsIndefiniteLength || _source.Position < innermost.ContentEnd)
-            return ScanElement();
-
-        var element = _openElements.RemoveLast();
-        var endsExactly = _source.Position == element.ContentEnd;
-        if (!endsExactly)
-            _failure = new ParseFailure(ParseFailureKind.ContainerSizeMismatch, element.ContentStart);
-        return CloseElement(element, childrenSucceeded: endsExactly);
+        enclosing.PreviousNestedEncodingStart = enclosing.NestedEncodingStart;
+        enclosing.NestedEncodingCount++;
+        return ContinueInnermostContents();
     }
 
     /// <summary>
-    /// Records the outcome of reading an element's content as nested elements. A constructed element or string fails
-    /// with its children; a probe whose content is not a complete run of elements becomes a leaf with raw content.
+    /// Reads the next nested encoding of the innermost enclosing encoding, or leaves its contents when they are used up.
     /// </summary>
-    private ElementScanResult CloseElement(in OpenElement element, bool childrenSucceeded)
+    private ScanResult ContinueInnermostContents()
     {
-        switch (element.Kind)
+        ref var innermost = ref _enclosing.Last;
+        if (innermost.IsIndefiniteForm || _source.Position < innermost.ContentsEnd)
+            return ScanEncoding();
+
+        var enclosing = _enclosing.RemoveLast();
+        var endsExactly = _source.Position == enclosing.ContentsEnd;
+        if (!endsExactly)
+            _failure = new ParseFailure(ParseFailureKind.ContentsLengthMismatch, enclosing.ContentsStart);
+        return LeaveContents(enclosing, nestedEncodingsValid: endsExactly);
+    }
+
+    /// <summary>
+    /// Records the outcome of reading an encoding's contents as nested encodings. A constructed encoding or string is
+    /// invalid with them; an OCTET STRING whose contents are not a complete run of encodings becomes a leaf with its
+    /// raw contents.
+    /// </summary>
+    private ScanResult LeaveContents(in EnclosingEncoding enclosing, bool nestedEncodingsValid)
+    {
+        switch (enclosing.Kind)
         {
-            case OpenElementKind.Constructed:
-                return childrenSucceeded ? KeepChildren(element) : ElementScanResult.Failed;
-            case OpenElementKind.EncapsulationProbe:
-                return childrenSucceeded ? KeepChildren(element) : RollBackProbe(element);
-            case OpenElementKind.ConstructedString:
-                return childrenSucceeded ? JoinSegments(element) : ElementScanResult.Failed;
-            default: // a constructed segment: its segments already belong to its string
-                return childrenSucceeded ? ElementScanResult.Succeeded : ElementScanResult.Failed;
+            case EnclosingEncodingKind.Constructed:
+                return nestedEncodingsValid ? KeepNestedEncodings(enclosing) : ScanResult.Failed;
+            case EnclosingEncodingKind.EncapsulatingOctetString:
+                return nestedEncodingsValid ? KeepNestedEncodings(enclosing) : RejectEncapsulation(enclosing);
+            case EnclosingEncodingKind.ConstructedString:
+                return nestedEncodingsValid ? JoinFragments(enclosing) : ScanResult.Failed;
+            default: // a constructed fragment: its fragments already belong to its string
+                return nestedEncodingsValid ? ScanResult.Succeeded : ScanResult.Failed;
         }
     }
 
-    private ElementScanResult KeepChildren(in OpenElement element)
+    /// <summary>The nested encodings become the node's children.</summary>
+    private ScanResult KeepNestedEncodings(in EnclosingEncoding enclosing)
     {
-        ref var node = ref _nodes[element.NodeIndex];
-        node.ContentIsChildren = true;
-        node.ChildCount = element.ChildCount;
-        return ElementScanResult.Succeeded;
+        ref var node = ref _nodes[enclosing.NodeIndex];
+        node.ContentsAreChildren = true;
+        node.ChildCount = enclosing.NestedEncodingCount;
+        return ScanResult.Succeeded;
     }
 
-    /// <summary>Checks that a leaf's content is present and moves past it.</summary>
-    private ElementScanResult SkipContent(in ElementHeader header)
+    /// <summary>Checks that the contents octets of a primitive encoding are present and moves past them.</summary>
+    private ScanResult SkipContents(in IdentifierAndLength encoding)
     {
-        if (header.ContentLength is not { } length)
-            return Fail(new ParseFailure(ParseFailureKind.IndefiniteLengthPrimitive, header.ContentStart));
+        if (encoding.ContentsLength is not { } length)
+            return Fail(new ParseFailure(ParseFailureKind.IndefiniteFormInPrimitive, encoding.ContentsStart));
         if (length > _source.Length - _source.Position)
-            return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, header.ContentStart, identifier: header.Identifier, tagNumber: header.TagNumber));
-        if (_source.Position + length > CurrentLimit)
-            return FailOutsideContainer();
+            return Fail(new ParseFailure(ParseFailureKind.ContentsPastEndOfData, encoding.ContentsStart, identifierOctet: encoding.IdentifierOctet, tagNumber: encoding.TagNumber));
+        if (_source.Position + length > CurrentContentsBound)
+            return FailCrossingContentsBound();
 
         _source.Position += length;
-        return ElementScanResult.Succeeded;
+        return ScanResult.Succeeded;
     }
 
-    /// <summary>Offset that the element being scanned may not cross; see <see cref="OpenElement.Limit"/>.</summary>
-    private readonly long CurrentLimit => _openElements.Count > 0 ? _openElements.Last.Limit : _source.Length;
+    /// <summary>Offset the encoding being scanned may not cross; see <see cref="EnclosingEncoding.ContentsBound"/>.</summary>
+    private readonly long CurrentContentsBound => _enclosing.Count > 0 ? _enclosing.Last.ContentsBound : _source.Length;
 
-    private readonly long CurrentLimitOwnerStart => _openElements.Count > 0 ? _openElements.Last.LimitOwnerStart : 0;
+    private readonly long CurrentContentsBoundStart => _enclosing.Count > 0 ? _enclosing.Last.ContentsBoundStart : 0;
 
-    /// <summary>The element being scanned crosses the end of a definite-length element that contains it.</summary>
-    private readonly ParseFailure OutsideContainerFailure() => new(ParseFailureKind.ContainerSizeMismatch, CurrentLimitOwnerStart);
+    /// <summary>The encoding being scanned crosses the end of the contents of a definite-form encoding enclosing it.</summary>
+    private readonly ParseFailure CrossingContentsBoundFailure() => new(ParseFailureKind.ContentsLengthMismatch, CurrentContentsBoundStart);
 
-    private ElementScanResult FailOutsideContainer() => Fail(OutsideContainerFailure());
+    private ScanResult FailCrossingContentsBound() => Fail(CrossingContentsBoundFailure());
 
-    private ElementScanResult Fail(ParseFailure failure)
+    private ScanResult Fail(ParseFailure failure)
     {
         _failure = failure;
-        return ElementScanResult.Failed;
+        return ScanResult.Failed;
     }
 }

@@ -153,16 +153,16 @@ public class ParsedStructureTests
     }
 
     [Theory]
-    [InlineData("02", "Unexpected end of data in the length of the element at offset 0")]
-    [InlineData("30 82", "Unexpected end of data in the length of the element at offset 0")]
-    [InlineData("30 03 02 82 01", "Unexpected end of data in the length of the element at offset 2")]
-    [InlineData("30 04 02 82 01 00", "Content size is not correct for tag Integer at offset 6")]
-    [InlineData("02 87 00 00 00 00 00 00 01 05", "Length of the element at offset 0 uses 7 octets; at most 6 are supported")]
-    [InlineData("02 FF 01", "Length of the element at offset 0 uses 127 octets; at most 6 are supported")]
-    [InlineData("04 85 01 00 00 00 00", "Length of the element at offset 0 is too large")]
-    [InlineData("04 84 80 00 00 00", "Length of the element at offset 0 is too large")]
-    [InlineData("04 84 7F FF FF FF 00", "Content size is not correct for tag OctetString at offset 6")]
-    [InlineData("30 03 04 85 01 00 00 00 00", "Length of the element at offset 2 is too large")]
+    [InlineData("02", "Unexpected end of data in the length octets of the encoding at offset 0")]
+    [InlineData("30 82", "Unexpected end of data in the length octets of the encoding at offset 0")]
+    [InlineData("30 03 02 82 01", "Unexpected end of data in the length octets of the encoding at offset 2")]
+    [InlineData("30 04 02 82 01 00", "The contents of Integer at offset 6 reach past the end of the data")]
+    [InlineData("02 87 00 00 00 00 00 00 01 05", "The length of the encoding at offset 0 uses 7 octets; at most 6 are supported")]
+    [InlineData("02 FF 01", "The length of the encoding at offset 0 uses 127 octets; at most 6 are supported")]
+    [InlineData("04 85 01 00 00 00 00", "The length of the encoding at offset 0 is too large")]
+    [InlineData("04 84 80 00 00 00", "The length of the encoding at offset 0 is too large")]
+    [InlineData("04 84 7F FF FF FF 00", "The contents of OctetString at offset 6 reach past the end of the data")]
+    [InlineData("30 03 04 85 01 00 00 00 00", "The length of the encoding at offset 2 is too large")]
     public void InvalidLength_FailsWithMessage(string hex, string message)
     {
         AssertFails(hex, message);
@@ -273,20 +273,20 @@ public class ParsedStructureTests
     public void Indefinite_InvalidChild_FailsTheDocument()
     {
         // The second INTEGER claims 5 bytes; it must not be dropped quietly.
-        AssertFails("30 80 02 01 05 02 05 01 00 00", "Content size is not correct for tag Integer at offset 7");
+        AssertFails("30 80 02 01 05 02 05 01 00 00", "The contents of Integer at offset 7 reach past the end of the data");
     }
 
     [Fact]
     public void Indefinite_MissingEndOfContents_Fails()
     {
-        AssertFails("30 80 02 01 05", "Indefinite-length container at offset 2 has no end-of-contents marker");
-        AssertFails("30 80 30 80 02 01 05 00 00", "Indefinite-length container at offset 2 has no end-of-contents marker");
+        AssertFails("30 80 02 01 05", "The contents in the indefinite form at offset 2 have no end-of-contents octets");
+        AssertFails("30 80 30 80 02 01 05 00 00", "The contents in the indefinite form at offset 2 have no end-of-contents octets");
     }
 
     [Fact]
     public void Indefinite_EndOfContentsWithLength_Fails()
     {
-        AssertFails("30 80 00 01 05 00 00", "Invalid end-of-contents marker at offset 2");
+        AssertFails("30 80 00 01 05 00 00", "Invalid end-of-contents octets at offset 2");
     }
 
     [Fact]
@@ -300,14 +300,14 @@ public class ParsedStructureTests
     [Fact]
     public void Indefinite_PrimitiveTag_Fails()
     {
-        AssertFails("02 80 01 00 00", "Cannot skip over an invalid tag with indefinite length");
+        AssertFails("02 80 01 00 00", "The primitive encoding with contents at offset 2 has a length in the indefinite form");
     }
 
     [Fact]
     public void Indefinite_PrimitiveOctetString_Fails()
     {
         // BER allows indefinite length only for constructed encodings.
-        AssertFails("04 80 02 01 05 00 00", "Cannot skip over an invalid tag with indefinite length");
+        AssertFails("04 80 02 01 05 00 00", "The primitive encoding with contents at offset 2 has a length in the indefinite form");
     }
 
     [Fact]
@@ -394,19 +394,19 @@ public class ParsedStructureTests
 
     [Fact]
     public void ContainerPastEndOfStream_Fails() =>
-        AssertFails("30 05 02 01", "Container at offset 2 has a length of 5, which is past the end of the stream");
+        AssertFails("30 05 02 01", "The contents at offset 2 have a length of 5, which reaches past the end of the data");
 
     [Fact]
     public void ChildOverrunsContainer_Fails() =>
-        AssertFails("30 03 02 02 01 05", "Content size is not correct for container at offset 2");
+        AssertFails("30 03 02 02 01 05", "The nested encodings do not match the length of the contents at offset 2");
 
     [Fact]
     public void PrimitivePastEndOfStream_Fails() =>
-        AssertFails("02 05 01", "Content size is not correct for tag Integer at offset 2");
+        AssertFails("02 05 01", "The contents of Integer at offset 2 reach past the end of the data");
 
     [Fact]
     public void FailureDeepInside_FailsWholeDocument() =>
-        AssertFails("30 08 30 06 30 04 02 05 01 02", "Content size is not correct for tag Integer at offset 8");
+        AssertFails("30 08 30 06 30 04 02 05 01 02", "The contents of Integer at offset 8 reach past the end of the data");
 
     [Fact]
     public void MultiByteTagNumber_IsRead()
@@ -429,12 +429,12 @@ public class ParsedStructureTests
     }
 
     [Theory]
-    [InlineData("1F 80 21 01 05", "The tag number of the element at offset 0 is not in the shortest form")] // leading zero digit
-    [InlineData("1F 1E 01 05", "The tag number of the element at offset 0 is not in the shortest form")]    // 30 fits one byte
-    [InlineData("30 03 5F 05 00", "The tag number of the element at offset 2 is not in the shortest form")]
-    [InlineData("1F 88 80 80 80 00 00", "The tag number of the element at offset 0 is too large")]          // 2^31
-    [InlineData("1F 81", "Unexpected end of data in the identifier of the element at offset 0")]
-    [InlineData("1F", "Unexpected end of data in the identifier of the element at offset 0")]
+    [InlineData("1F 80 21 01 05", "The tag number of the encoding at offset 0 is not in the shortest form")] // leading zero digit
+    [InlineData("1F 1E 01 05", "The tag number of the encoding at offset 0 is not in the shortest form")]    // 30 fits one byte
+    [InlineData("30 03 5F 05 00", "The tag number of the encoding at offset 2 is not in the shortest form")]
+    [InlineData("1F 88 80 80 80 00 00", "The tag number of the encoding at offset 0 is too large")]          // 2^31
+    [InlineData("1F 81", "Unexpected end of data in the identifier octets of the encoding at offset 0")]
+    [InlineData("1F", "Unexpected end of data in the identifier octets of the encoding at offset 0")]
     public void InvalidMultiByteTagNumber_Fails(string hex, string error)
     {
         AssertFails(hex, error);
@@ -450,7 +450,7 @@ public class ParsedStructureTests
     public void Deserialize_ThrowsWithErrorMessage()
     {
         var ex = Assert.Throws<Asn1DeserializationException>(() => Asn1Serializer.Deserialize(H("30 05 02 01")));
-        Assert.Equal("Container at offset 2 has a length of 5, which is past the end of the stream", ex.Message);
+        Assert.Equal("The contents at offset 2 have a length of 5, which reaches past the end of the data", ex.Message);
     }
 
     [Fact]

@@ -47,15 +47,15 @@ public class BerTests
         { "unused bits that are not zero", "03 02 04 F7" },
         { "constructed BIT STRING", "23 08 03 02 00 0A 03 02 04 F0" },
         { "constructed BIT STRING, indefinite", "23 80 03 02 00 0A 03 02 04 F0 00 00" },
-        { "constructed BIT STRING, nested segment", "23 80 23 04 03 02 00 0A 03 02 04 F0 00 00" },
-        { "constructed BIT STRING, no segments", "23 00" },
+        { "constructed BIT STRING, nested fragment", "23 80 23 04 03 02 00 0A 03 02 04 F0 00 00" },
+        { "constructed BIT STRING, no fragments", "23 00" },
 
         // §8.7 OCTET STRING
         { "constructed OCTET STRING", "24 06 04 01 41 04 01 42" },
         { "constructed OCTET STRING, indefinite", "24 80 04 01 41 04 01 42 00 00" },
         { "constructed OCTET STRING, nested indefinite", "24 80 04 02 41 42 24 80 04 01 43 00 00 00 00" },
-        { "constructed OCTET STRING, empty segments", "24 80 04 00 04 00 00 00" },
-        { "constructed OCTET STRING, long-form segment lengths", "24 08 04 81 01 41 04 81 01 42" },
+        { "constructed OCTET STRING, empty fragments", "24 80 04 00 04 00 00 00" },
+        { "constructed OCTET STRING, long-form fragment lengths", "24 08 04 81 01 41 04 81 01 42" },
         { "constructed OCTET STRING holding DER", "24 09 04 02 30 03 04 03 02 01 05" },
         { "constructed OCTET STRING inside a SEQUENCE", "30 80 24 80 04 01 41 00 00 02 01 05 00 00" },
 
@@ -107,25 +107,25 @@ public class BerTests
 
     public static TheoryData<string, string, string> InvalidBer => new()
     {
-        { "missing end-of-contents", "30 80 02 01 05", "Indefinite-length container at offset 2 has no end-of-contents marker" },
-        { "missing end-of-contents, nested", "30 80 30 80 02 01 05 00 00", "Indefinite-length container at offset 2 has no end-of-contents marker" },
-        { "end-of-contents with a length", "30 80 00 01 05 00 00", "Invalid end-of-contents marker at offset 2" },
-        { "indefinite primitive", "02 80 01 05 00 00", "Cannot skip over an invalid tag with indefinite length" },
-        { "indefinite primitive OCTET STRING", "04 80 04 01 41 00 00", "Cannot skip over an invalid tag with indefinite length" },
-        { "truncated content", "30 03 02 01", "Container at offset 2 has a length of 3, which is past the end of the stream" },
-        { "truncated length", "04 82 00", "Unexpected end of data in the length of the element at offset 0" },
-        { "length 0xFF is reserved", "04 FF 00", "Length of the element at offset 0 uses 127 octets; at most 6 are supported" },
-        { "child crossing its container", "30 02 02 01 05", "Content size is not correct for container at offset 2" },
-        { "indefinite child without room for its end", "30 05 30 80 02 01 05", "Indefinite-length container at offset 4 has no end-of-contents marker" },
-        { "tag number with a leading zero digit", "1F 80 21 01 05", "The tag number of the element at offset 0 is not in the shortest form" },
-        { "low tag number in the long form", "1F 1E 01 05", "The tag number of the element at offset 0 is not in the shortest form" },
-        { "truncated identifier", "1F 81", "Unexpected end of data in the identifier of the element at offset 0" },
-        { "segment of the wrong type", "24 03 02 01 05", "Segment at offset 2 of a constructed string is not an OCTET STRING" },
-        { "character string segment of its own type", "2C 03 0C 01 41", "Segment at offset 2 of a constructed string is not an OCTET STRING" },
-        { "unused bits before the last segment", "23 08 03 02 04 F0 03 02 00 0A", "BIT STRING segment at offset 6 has an invalid unused-bits count; only the last segment may have unused bits" },
-        { "unused bits above 7", "23 04 03 02 08 00", "BIT STRING segment at offset 2 has an invalid unused-bits count; only the last segment may have unused bits" },
-        { "empty BIT STRING segment", "23 02 03 00", "BIT STRING segment at offset 2 has an invalid unused-bits count; only the last segment may have unused bits" },
-        { "constructed string without its end", "24 80 04 01 41", "Indefinite-length container at offset 2 has no end-of-contents marker" },
+        { "missing end-of-contents", "30 80 02 01 05", "The contents in the indefinite form at offset 2 have no end-of-contents octets" },
+        { "missing end-of-contents, nested", "30 80 30 80 02 01 05 00 00", "The contents in the indefinite form at offset 2 have no end-of-contents octets" },
+        { "end-of-contents with a length", "30 80 00 01 05 00 00", "Invalid end-of-contents octets at offset 2" },
+        { "indefinite primitive", "02 80 01 05 00 00", "The primitive encoding with contents at offset 2 has a length in the indefinite form" },
+        { "indefinite primitive OCTET STRING", "04 80 04 01 41 00 00", "The primitive encoding with contents at offset 2 has a length in the indefinite form" },
+        { "truncated content", "30 03 02 01", "The contents at offset 2 have a length of 3, which reaches past the end of the data" },
+        { "truncated length", "04 82 00", "Unexpected end of data in the length octets of the encoding at offset 0" },
+        { "length 0xFF is reserved", "04 FF 00", "The length of the encoding at offset 0 uses 127 octets; at most 6 are supported" },
+        { "child crossing its container", "30 02 02 01 05", "The nested encodings do not match the length of the contents at offset 2" },
+        { "indefinite child without room for its end", "30 05 30 80 02 01 05", "The contents in the indefinite form at offset 4 have no end-of-contents octets" },
+        { "tag number with a leading zero digit", "1F 80 21 01 05", "The tag number of the encoding at offset 0 is not in the shortest form" },
+        { "low tag number in the long form", "1F 1E 01 05", "The tag number of the encoding at offset 0 is not in the shortest form" },
+        { "truncated identifier", "1F 81", "Unexpected end of data in the identifier octets of the encoding at offset 0" },
+        { "fragment of the wrong type", "24 03 02 01 05", "The fragment at offset 2 of a constructed string is not an OCTET STRING" },
+        { "character string fragment of its own type", "2C 03 0C 01 41", "The fragment at offset 2 of a constructed string is not an OCTET STRING" },
+        { "unused bits before the last fragment", "23 08 03 02 04 F0 03 02 00 0A", "The BIT STRING fragment at offset 6 has an invalid number of unused bits; only the last fragment may have unused bits" },
+        { "unused bits above 7", "23 04 03 02 08 00", "The BIT STRING fragment at offset 2 has an invalid number of unused bits; only the last fragment may have unused bits" },
+        { "empty BIT STRING fragment", "23 02 03 00", "The BIT STRING fragment at offset 2 has an invalid number of unused bits; only the last fragment may have unused bits" },
+        { "constructed string without its end", "24 80 04 01 41", "The contents in the indefinite form at offset 2 have no end-of-contents octets" },
     };
 
     [Theory]
@@ -145,7 +145,7 @@ public class BerTests
     public void CerFromAsnWriter_ReadsBackEveryValue_AndSerializesToTheDerOfTheSameValues()
     {
         // CER writes constructed values with indefinite lengths and splits strings of more than 1000 bytes into
-        // 1000-byte segments; DER writes the same values with definite lengths and as single strings.
+        // 1000-byte fragments; DER writes the same values with definite lengths and as single strings.
         var octets = Enumerable.Range(0, 2500).Select(i => (byte)i).ToArray();
         var text = string.Concat(Enumerable.Repeat("Příliš žluťoučký kůň ", 80));
         var bits = Enumerable.Range(0, 1200).Select(i => (byte)(i * 7)).ToArray();

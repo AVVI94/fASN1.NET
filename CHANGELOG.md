@@ -35,17 +35,20 @@ Tag identity:
   class. These tags report `IsConstructed` from their identifier, so a parsed empty `A0 00` is constructed.
 
 Parsing:
-- BER constructed strings (a BIT STRING, OCTET STRING, character string or time split into segments, as CER does for
+- BER constructed strings (a BIT STRING, OCTET STRING, character string or time split into fragments, as CER does for
   values over 1000 bytes) are joined into one value: the tree has the same tag as for the primitive encoding, and a
   joined OCTET STRING is read for encapsulated elements like a primitive one. They used to be `Unknown` tags with
-  the segments as children and no content. `Serialize` writes them in the primitive DER form.
+  the fragments as children and no content. `Serialize` writes them in the primitive DER form.
 - An OCTET STRING is read as encapsulated children only when every length inside it is in DER form and every SET
   inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
 - Input that used to parse into a wrong tree now fails with an error: an element crossing
   the end of its container, a missing end-of-contents marker, `00` with a non-zero length inside an
   indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`.
 - `TryDeserialize` always gives an error message when it returns `false`. An exception from a custom tag factory or
-  from the stream propagates out of `Deserialize`.
+  from the stream propagates out of `Deserialize`. Error messages use the terms of X.690 (identifier, length and
+  contents octets, encodings, end-of-contents octets, fragments), for example "The contents in the indefinite form at
+  offset 2 have no end-of-contents octets" instead of "Indefinite-length container at offset 2 has no end-of-contents
+  marker".
 - `ITag.Children` of a parsed tag is an `IList<ITag>` that is not a `List<ITag>`; it is still fully mutable.
 - Every built-in tag derives from the new public `TagBase`.
 

@@ -26,7 +26,7 @@ public class TagFactoryContractTests
         // INTEGER claiming 5 content bytes with 1 left.
         Assert.False(Asn1Serializer.TryDeserialize(Convert.FromHexString("020505"), new ConstructedClaimingFactory(), out _, out var error));
 
-        Assert.Equal("Content size is not correct for tag Custom_2 at offset 2", error);
+        Assert.Equal("The contents of Custom_2 at offset 2 reach past the end of the data", error);
     }
 
     [Fact]

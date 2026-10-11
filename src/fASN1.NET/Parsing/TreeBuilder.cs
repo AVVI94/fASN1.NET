@@ -6,7 +6,8 @@ using fASN1.NET.Tags;
 namespace fASN1.NET.Parsing;
 
 /// <summary>
-/// Second pass of the parser: creates the tags described by the scanned nodes and reads their content.
+/// Second pass of the parser: creates the tags described by the scanned nodes and reads the contents octets of the
+/// primitive encodings among them.
 /// </summary>
 /// <remarks>
 /// Nodes are in pre-order, so the tree is built front to back: each node becomes the next child of the
@@ -18,7 +19,7 @@ internal static class TreeBuilder
     private const int INITIAL_PARENT_CAPACITY = 16;
 
     /// <summary>Builds the tree; <paramref name="failure"/> is only written when this fails.</summary>
-    public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ReadOnlySpan<ContentSegment> segments, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
+    public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ReadOnlySpan<ContentsFragment> fragments, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
         root = null;
@@ -28,15 +29,15 @@ internal static class TreeBuilder
             foreach (ref readonly var node in nodes)
             {
                 ITag? tag;
-                if (node.IsJoinedString)
+                if (node.IsConstructedString)
                 {
-                    if (!TryBuildJoinedString(ref source, node, segments.Slice(node.FirstSegment, node.SegmentCount), tagFactory, out tag, ref failure))
+                    if (!TryBuildConstructedString(ref source, node, fragments.Slice(node.FirstFragment, node.FragmentCount), tagFactory, out tag, ref failure))
                         return false;
                 }
                 else
                 {
-                    tag = Ber.CreateTag(tagFactory, node.Identifier, node.TagNumber);
-                    if (!TryFillContent(ref source, tag, node, ref failure))
+                    tag = Ber.CreateTag(tagFactory, node.IdentifierOctet, node.TagNumber);
+                    if (!TryFillContents(ref source, tag, node, ref failure))
                         return false;
                 }
 
@@ -45,7 +46,7 @@ internal static class TreeBuilder
                 else
                     parents.Last.Add(tag);
 
-                if (node.ContentIsChildren && node.ChildCount > 0)
+                if (node.ContentsAreChildren && node.ChildCount > 0)
                     parents.Add(ExpectChildren(tag, node.ChildCount));
 
                 while (parents.Count > 0 && parents.Last.RemainingChildren == 0)
@@ -60,50 +61,51 @@ internal static class TreeBuilder
     }
 
     /// <summary>
-    /// Creates the tag of a constructed string with its segments joined. A joined OCTET STRING is parsed as a
-    /// primitive OCTET STRING with that value would be, so encapsulated content is read the same way.
+    /// Creates the tag of a constructed string with the contents of its fragments joined. A constructed OCTET STRING is
+    /// then parsed as the primitive OCTET STRING with that value would be, so encapsulated encodings are read the same
+    /// way.
     /// </summary>
-    private static bool TryBuildJoinedString<TSource>(ref TSource source, in ScannedNode node, ReadOnlySpan<ContentSegment> segments,
+    private static bool TryBuildConstructedString<TSource>(ref TSource source, in ScannedNode node, ReadOnlySpan<ContentsFragment> fragments,
                                                       ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
         tag = null;
-        var isOctetString = node.Identifier == (int)Tag.OctetString;
-        // For an OCTET STRING, room for the identifier and the longest length in front of the content.
+        var isOctetString = node.IdentifierOctet == (int)Tag.OctetString;
+        // For an OCTET STRING, room for an identifier octet and the longest length octets in front of the contents.
         var offset = isOctetString ? 6 : 0;
-        var buffer = new byte[offset + node.ContentLength];
-        if (node.Identifier == (int)Tag.BitString)
+        var buffer = new byte[offset + node.ContentsLength];
+        if (node.IdentifierOctet == (int)Tag.BitString)
             buffer[offset++] = (byte)node.UnusedBits;
-        foreach (var segment in segments)
+        foreach (var fragment in fragments)
         {
-            if (!TryReadInto(ref source, buffer, offset, segment.Start, segment.Length))
+            if (!TryReadInto(ref source, buffer, offset, fragment.Start, fragment.Length))
             {
-                failure = new ParseFailure(ParseFailureKind.ContentReadIncomplete, segment.Start, identifier: node.Identifier, tagNumber: node.TagNumber);
+                failure = new ParseFailure(ParseFailureKind.ContentsReadIncomplete, fragment.Start, identifierOctet: node.IdentifierOctet, tagNumber: node.TagNumber);
                 return false;
             }
-            offset += (int)segment.Length;
+            offset += (int)fragment.Length;
         }
 
         if (!isOctetString)
         {
-            tag = Ber.CreateTag(tagFactory, node.Identifier, node.TagNumber);
+            tag = Ber.CreateTag(tagFactory, node.IdentifierOctet, node.TagNumber);
             tag.Content = buffer;
             return true;
         }
 
-        // Write 04, the length and nothing else before the content, and parse that as a document of its own.
-        var length = (int)node.ContentLength;
+        // Write the identifier and length octets of the primitive encoding in front of the contents, and parse that.
+        var length = (int)node.ContentsLength;
         var lengthOctets = length < 0x80 ? 0 : length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
         var start = 6 - 2 - lengthOctets;
         buffer[start] = (byte)Tag.OctetString;
-        buffer[start + 1] = (byte)(lengthOctets == 0 ? length : Ber.LONG_FORM_LENGTH_FLAG | lengthOctets);
+        buffer[start + 1] = (byte)(lengthOctets == 0 ? length : Ber.LONG_FORM_FLAG | lengthOctets);
         for (int i = lengthOctets; i > 0; i--, length >>= 8)
             buffer[start + 1 + i] = (byte)length;
         var encoded = new ByteArraySource(buffer) { Position = start };
         return Asn1Parser.TryParse(ref encoded, tagFactory, out tag, out _);
     }
 
-    /// <summary>Reads <paramref name="length"/> bytes at <paramref name="start"/> into <paramref name="destination"/>.</summary>
+    /// <summary>Reads <paramref name="length"/> octets at <paramref name="start"/> into <paramref name="destination"/>.</summary>
     private static bool TryReadInto<TSource>(ref TSource source, byte[] destination, int offset, long start, long length)
         where TSource : struct, IByteSource
     {
@@ -119,27 +121,27 @@ internal static class TreeBuilder
         return true;
     }
 
-    /// <summary>Gives a leaf its content bytes; <paramref name="failure"/> is only written when this fails.</summary>
-    private static bool TryFillContent<TSource>(ref TSource source, ITag tag, in ScannedNode node, ref ParseFailure failure)
+    /// <summary>Gives a primitive encoding's tag its contents octets; <paramref name="failure"/> is only written when this fails.</summary>
+    private static bool TryFillContents<TSource>(ref TSource source, ITag tag, in ScannedNode node, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
-        if (node.ContentIsChildren)
+        if (node.ContentsAreChildren)
         {
-            // A definite-length element read as zero children gets empty content, as an empty leaf would.
-            if (node.ChildCount == 0 && !node.IsIndefiniteLength && TagBase.GetChildCount(tag) == 0)
+            // Definite-form contents with no nested encodings give the tag empty contents, as a primitive encoding would.
+            if (node.ChildCount == 0 && !node.IsIndefiniteForm && TagBase.GetChildCount(tag) == 0)
                 tag.Content = [];
             return true;
         }
 
-        if (node.IsRolledBackProbe && TagBase.GetChildCount(tag) > 0)
+        if (node.IsEncapsulationRejected && TagBase.GetChildCount(tag) > 0)
             tag.Children.Clear();
         if (TagBase.GetChildCount(tag) > 0)
-            return true; // children the factory gave the tag take the place of content
+            return true; // children the factory gave the tag take the place of contents
 
-        var content = ReadContent(ref source, tag, node.ContentStart, node.ContentLength, ref failure);
-        if (content is null)
+        var contents = ReadContents(ref source, tag, node.ContentsStart, node.ContentsLength, ref failure);
+        if (contents is null)
             return false;
-        tag.Content = content;
+        tag.Content = contents;
         return true;
     }
 
@@ -153,28 +155,29 @@ internal static class TreeBuilder
     }
 
     /// <summary>
-    /// Reads a leaf's content, or returns <see langword="null"/> and sets <paramref name="failure"/> if the
-    /// input ends early. Streams may return fewer bytes than requested, so it reads until complete.
+    /// Reads the contents octets of a primitive encoding, or returns <see langword="null"/> and sets
+    /// <paramref name="failure"/> if the input ends early. Streams may return fewer bytes than requested, so it reads
+    /// until complete.
     /// </summary>
-    private static byte[]? ReadContent<TSource>(ref TSource source, ITag tag, long start, long length, ref ParseFailure failure)
+    private static byte[]? ReadContents<TSource>(ref TSource source, ITag tag, long start, long length, ref ParseFailure failure)
         where TSource : struct, IByteSource
     {
         if (length == 0)
             return [];
 
         source.Position = start;
-        var content = new byte[length];
+        var contents = new byte[length];
         var read = 0;
-        while (read < content.Length)
+        while (read < contents.Length)
         {
-            var count = source.Read(content, read, content.Length - read);
+            var count = source.Read(contents, read, contents.Length - read);
             if (count == 0)
             {
-                failure = new ParseFailure(ParseFailureKind.ContentReadIncomplete, start, tagName: tag.TagName);
+                failure = new ParseFailure(ParseFailureKind.ContentsReadIncomplete, start, tagName: tag.TagName);
                 return null;
             }
             read += count;
         }
-        return content;
+        return contents;
     }
 }

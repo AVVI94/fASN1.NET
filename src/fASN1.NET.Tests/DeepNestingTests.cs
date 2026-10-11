@@ -61,7 +61,7 @@ public class DeepNestingTests
         data[^2] = 0x02;
 
         Assert.False(Asn1Serializer.TryDeserialize(data, out _, out var error));
-        Assert.Equal($"Content size is not correct for tag Null at offset {data.Length - 1}", error);
+        Assert.Equal($"The contents of Null at offset {data.Length - 1} reach past the end of the data", error);
     }
 
     [Fact]

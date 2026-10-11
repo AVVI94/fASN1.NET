@@ -1,50 +1,58 @@
 namespace fASN1.NET.Parsing;
 
 /// <summary>
-/// One node of the final tree, as found by <see cref="StructureScanner{TSource}"/>. Nodes are stored in
-/// pre-order, so the children of a node are the <see cref="ChildCount"/> subtrees that follow it.
+/// One node of the final tree, as found by <see cref="StructureScanner{TSource}"/>: one encoding, or for a constructed
+/// string the whole string. Nodes are stored in pre-order, so the children of a node are the
+/// <see cref="ChildCount"/> subtrees that follow it.
 /// </summary>
 internal struct ScannedNode
 {
-    /// <summary>The first identifier byte: class, constructed bit, and the tag number when it is below 31.</summary>
-    public int Identifier;
+    /// <summary>
+    /// The first identifier octet: class, primitive or constructed, and the tag number when it is below 31. For a
+    /// constructed string it is the primitive form, so the factory creates the same tag as for a primitive string.
+    /// </summary>
+    public int IdentifierOctet;
 
-    /// <summary>The tag number, also when it took several identifier bytes.</summary>
+    /// <summary>The tag number, also when it is in the high-tag-number form.</summary>
     public int TagNumber;
 
-    /// <summary>Offset of the first content byte.</summary>
-    public long ContentStart;
+    /// <summary>Offset of the first contents octet.</summary>
+    public long ContentsStart;
 
-    /// <summary>Content length; meaningful for leaves.</summary>
-    public long ContentLength;
+    /// <summary>Number of contents octets of a leaf; for a constructed string, the joined length.</summary>
+    public long ContentsLength;
 
-    public bool IsIndefiniteLength;
+    /// <summary>The length is in the indefinite form.</summary>
+    public bool IsIndefiniteForm;
 
-    /// <summary>The content was read as child elements (possibly none), not as bytes.</summary>
-    public bool ContentIsChildren;
+    /// <summary>
+    /// The contents were read as nested encodings (possibly none), which become the node's children: a constructed
+    /// encoding, or an OCTET STRING encapsulating encodings.
+    /// </summary>
+    public bool ContentsAreChildren;
 
-    /// <summary>Number of direct children when <see cref="ContentIsChildren"/> is set.</summary>
+    /// <summary>Number of children when <see cref="ContentsAreChildren"/> is set.</summary>
     public int ChildCount;
 
     /// <summary>
-    /// An OCTET STRING whose content was tried as child elements and did not parse as such; it is a leaf
-    /// holding the raw bytes.
+    /// A primitive OCTET STRING whose contents were tried as encapsulated encodings and are not; it is a leaf holding
+    /// the raw contents octets.
     /// </summary>
-    public bool IsRolledBackProbe;
+    public bool IsEncapsulationRejected;
 
     /// <summary>
-    /// A constructed string whose segments are joined: its content is the <see cref="SegmentCount"/> segments from
-    /// <see cref="FirstSegment"/>, after the unused-bits byte <see cref="UnusedBits"/> for a BIT STRING, and
-    /// <see cref="ContentLength"/> is their total. <see cref="Identifier"/> is the primitive form.
+    /// A string in the constructed encoding (X.690 §8.6.4, §8.7.3, §8.23.6): its value is the contents of its
+    /// <see cref="FragmentCount"/> primitive fragments from <see cref="FirstFragment"/>, after the unused-bits octet
+    /// <see cref="UnusedBits"/> for a BIT STRING, and <see cref="ContentsLength"/> is their total.
     /// </summary>
-    public bool IsJoinedString;
+    public bool IsConstructedString;
 
-    /// <summary>Index of the first segment of a joined string.</summary>
-    public int FirstSegment;
+    /// <summary>Index of the first fragment of a constructed string.</summary>
+    public int FirstFragment;
 
-    /// <summary>Number of segments of a joined string.</summary>
-    public int SegmentCount;
+    /// <summary>Number of fragments of a constructed string.</summary>
+    public int FragmentCount;
 
-    /// <summary>Unused bits in the last segment of a joined BIT STRING.</summary>
+    /// <summary>Unused bits in the final octet of a constructed BIT STRING, from its last fragment.</summary>
     public int UnusedBits;
 }

@@ -147,21 +147,21 @@ internal static class BerGenerator
         return Constructed(rng, depth);
     }
 
-    /// <summary>A BER constructed string: BIT STRING, OCTET STRING, UTF8String or IA5String split into segments.</summary>
+    /// <summary>A BER constructed string: BIT STRING, OCTET STRING, UTF8String or IA5String split into fragments.</summary>
     private static byte[] ConstructedString(Random rng)
     {
-        var (tag, segmentTag) = rng.Next(4) switch
+        var (tag, fragmentTag) = rng.Next(4) switch
         {
             0 => ((byte)0x23, (byte)0x03),
             1 => ((byte)0x24, (byte)0x04),
             2 => ((byte)0x2C, (byte)0x04),
             _ => ((byte)0x36, (byte)0x04),
         };
-        return Tlv([tag], Segments(rng, segmentTag, levels: 2), rng, allowIndefinite: true);
+        return Tlv([tag], Fragments(rng, fragmentTag, levels: 2), rng, allowIndefinite: true);
     }
 
-    /// <summary>Segments, some of them constructed in turn, and now and then an invalid one.</summary>
-    private static byte[] Segments(Random rng, byte segmentTag, int levels)
+    /// <summary>Fragments, some of them constructed in turn, and now and then an invalid one.</summary>
+    private static byte[] Fragments(Random rng, byte fragmentTag, int levels)
     {
         var body = new List<byte>();
         int count = rng.Next(4);
@@ -169,14 +169,14 @@ internal static class BerGenerator
         {
             if (levels > 0 && rng.Next(5) == 0)
             {
-                body.AddRange(Tlv([(byte)(segmentTag | 0x20)], Segments(rng, segmentTag, levels - 1), rng, allowIndefinite: true));
+                body.AddRange(Tlv([(byte)(fragmentTag | 0x20)], Fragments(rng, fragmentTag, levels - 1), rng, allowIndefinite: true));
                 continue;
             }
             var data = new byte[rng.Next(6)];
             rng.NextBytes(data);
-            if (segmentTag == 0x03)
+            if (fragmentTag == 0x03)
                 data = [(byte)(rng.Next(10) == 0 ? rng.Next(8) : 0), .. data]; // unused bits
-            var identifier = rng.Next(20) == 0 ? (byte)0x02 : segmentTag;
+            var identifier = rng.Next(20) == 0 ? (byte)0x02 : fragmentTag;
             body.AddRange(Tlv([identifier], data, rng, allowIndefinite: false));
         }
         return body.ToArray();

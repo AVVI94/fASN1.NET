@@ -70,7 +70,7 @@ public class HostileInputTests
         var (tag, error) = Contract.Check(Convert.FromHexString("3005300402010500"));
 
         Assert.Null(tag);
-        Assert.Equal("Content size is not correct for container at offset 2", error);
+        Assert.Equal("The nested encodings do not match the length of the contents at offset 2", error);
     }
 
     private static ITag ParseWithin(byte[] data, TimeSpan limit)
