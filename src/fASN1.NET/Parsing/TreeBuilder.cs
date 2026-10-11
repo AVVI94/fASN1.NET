@@ -35,7 +35,7 @@ internal static class TreeBuilder
                 }
                 else
                 {
-                    tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
+                    tag = Ber.CreateTag(tagFactory, node.Identifier, node.TagNumber);
                     if (!TryFillContent(ref source, tag, node, ref failure))
                         return false;
                 }
@@ -78,7 +78,7 @@ internal static class TreeBuilder
         {
             if (!TryReadInto(ref source, buffer, offset, segment.Start, segment.Length))
             {
-                failure = new ParseFailure(ParseFailureKind.ContentReadIncomplete, segment.Start, tagName: TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber).TagName);
+                failure = new ParseFailure(ParseFailureKind.ContentReadIncomplete, segment.Start, identifier: node.Identifier, tagNumber: node.TagNumber);
                 return false;
             }
             offset += (int)segment.Length;
@@ -86,7 +86,7 @@ internal static class TreeBuilder
 
         if (!isOctetString)
         {
-            tag = TagTraitsTable.Create(tagFactory, node.Identifier, node.TagNumber);
+            tag = Ber.CreateTag(tagFactory, node.Identifier, node.TagNumber);
             tag.Content = buffer;
             return true;
         }

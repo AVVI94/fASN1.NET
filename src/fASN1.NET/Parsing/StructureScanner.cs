@@ -29,7 +29,6 @@ internal ref struct StructureScanner<TSource>
     private const int INITIAL_NODE_CAPACITY = 128;
 
     private TSource _source;
-    private readonly TagTraitsTable _traits;
     private PooledList<OpenElement> _openElements;
     private PooledList<ScannedNode> _nodes;
     private PooledList<ContentSegment> _segments;
@@ -42,11 +41,9 @@ internal ref struct StructureScanner<TSource>
     private int _stringUnusedBits;
 
     /// <param name="source">The input, positioned at the element to scan. The scanner reads a copy.</param>
-    /// <param name="traits">Traits of the tags the factory creates.</param>
-    public StructureScanner(TSource source, TagTraitsTable traits)
+    public StructureScanner(TSource source)
     {
         _source = source;
-        _traits = traits;
         _openElements = new PooledList<OpenElement>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
         _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
         _segments = new PooledList<ContentSegment>(INITIAL_OPEN_ELEMENT_CAPACITY, clearOnRemove: false);
@@ -152,9 +149,9 @@ internal ref struct StructureScanner<TSource>
         if (_openElements.Count > 0 && _openElements.Last.Kind == OpenElementKind.ConstructedString)
             return ScanStringSegment(elementStart, identifier, contentLength);
 
-        var traits = _traits.ForElement(identifier, tagNumber);
-        if (traits.StringSegmentTagNumber != 0)
-            return OpenConstructedString(elementStart, identifier, tagNumber, contentLength, traits.StringSegmentTagNumber);
+        var segmentTagNumber = Ber.StringSegmentTagNumber(identifier);
+        if (segmentTagNumber != 0)
+            return OpenConstructedString(elementStart, identifier, tagNumber, contentLength, segmentTagNumber);
 
         var contentStart = _source.Position;
         var nodeIndex = _nodes.Add(new ScannedNode
@@ -168,11 +165,12 @@ internal ref struct StructureScanner<TSource>
 
         // Indefinite length is only valid for constructed elements, so such an OCTET STRING is not probed;
         // skipping its content fails below instead.
-        if (traits.IsConstructed || (traits.IsEncapsulationCandidate && contentLength is not null))
+        var isConstructed = Ber.IsConstructed(identifier);
+        if (isConstructed || (Ber.IsEncapsulationCandidate(identifier) && contentLength is not null))
         {
             return OpenChildren(new OpenElement
             {
-                Kind = traits.IsConstructed ? OpenElementKind.Constructed : OpenElementKind.EncapsulationProbe,
+                Kind = isConstructed ? OpenElementKind.Constructed : OpenElementKind.EncapsulationProbe,
                 NodeIndex = nodeIndex,
                 ElementStart = elementStart,
                 ContentStart = contentStart,
@@ -181,7 +179,7 @@ internal ref struct StructureScanner<TSource>
         }
 
         _completedElementStart = elementStart;
-        return SkipContent(traits.TagName, contentStart, contentLength);
+        return SkipContent(identifier, tagNumber, contentStart, contentLength);
     }
 
     /// <summary>Starts reading an element's content as children, unless its declared content cannot fit.</summary>
@@ -263,7 +261,7 @@ internal ref struct StructureScanner<TSource>
         _nodes.Truncate(element.NodeIndex + 1);
         node.IsRolledBackProbe = true;
         _source.Position = element.ContentStart;
-        return SkipContent(_traits[node.Identifier].TagName, element.ContentStart, element.ContentLength);
+        return SkipContent(node.Identifier, node.TagNumber, element.ContentStart, element.ContentLength);
     }
 
     /// <summary>
@@ -324,7 +322,7 @@ internal ref struct StructureScanner<TSource>
         }
 
         _completedElementStart = elementStart;
-        var skipped = SkipContent(segmentName, contentStart, contentLength);
+        var skipped = SkipContent(segmentTagNumber, segmentTagNumber, contentStart, contentLength);
         if (skipped != ElementScanResult.Succeeded)
             return skipped;
 
@@ -372,12 +370,12 @@ internal ref struct StructureScanner<TSource>
     }
 
     /// <summary>Checks that a leaf's content is present and moves past it.</summary>
-    private ElementScanResult SkipContent(string tagName, long contentStart, long? contentLength)
+    private ElementScanResult SkipContent(int identifier, int tagNumber, long contentStart, long? contentLength)
     {
         if (contentLength is null)
             return Fail(new ParseFailure(ParseFailureKind.IndefiniteLengthPrimitive, contentStart));
         if (contentLength.Value > _source.Length - _source.Position)
-            return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, contentStart, tagName: tagName));
+            return Fail(new ParseFailure(ParseFailureKind.ContentPastEndOfData, contentStart, identifier: identifier, tagNumber: tagNumber));
         if (_source.Position + contentLength.Value > CurrentLimit)
             return FailOutsideContainer();
 

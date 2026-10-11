@@ -26,14 +26,13 @@ internal static class Asn1Parser
     public static bool TryParse<TSource>(ref TSource source, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
         where TSource : struct, IByteSource
     {
-        var traits = TagTraitsTable.ForFactory(tagFactory);
-        var scanner = new StructureScanner<TSource>(source, traits);
+        var scanner = new StructureScanner<TSource>(source);
         try
         {
             if (!scanner.TryScan())
             {
                 tag = null;
-                error = scanner.Failure.ToMessage();
+                error = scanner.Failure.ToMessage(tagFactory);
                 return false;
             }
 
@@ -42,7 +41,7 @@ internal static class Asn1Parser
             if (!TreeBuilder.TryBuild(ref source, scanner.Nodes, scanner.Segments, tagFactory, out tag, ref failure))
             {
                 tag = null;
-                error = failure.ToMessage();
+                error = failure.ToMessage(tagFactory);
                 return false;
             }
 
@@ -53,7 +52,6 @@ internal static class Asn1Parser
         finally
         {
             scanner.Dispose();
-            traits.Dispose();
         }
     }
 }

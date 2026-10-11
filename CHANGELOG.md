@@ -27,7 +27,9 @@ Tag identity:
   (`[16]` also has 16), use the new `tag.Is(Tag.Sequence)` instead of comparing `TagNumber` with a `Tag` value.
 - Multi-byte tag numbers (31 and up, X.690 §8.1.2.4) are read and written; they used to be rejected.
 - `ITagFactory.Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content)` replaces
-  `Create(int identifier, byte[]? content)`.
+  `Create(int identifier, byte[]? content)`. The parser decides the shape of the tree from the encoding alone, as
+  X.690 defines it: a tag whose `IsConstructed` disagrees with its identifier no longer changes how its content is
+  read. The factory is asked only for the tags of the final tree, and for a tag's name when an error message needs it.
 - `ContextSpecific_0` to `ContextSpecific_3` take `isConstructed` instead of an identifier byte;
   `ContextSpecificTag`, `Application` and `Private` take the tag number and `isConstructed`, and `Unknown` also the
   class. These tags report `IsConstructed` from their identifier, so a parsed empty `A0 00` is constructed.
