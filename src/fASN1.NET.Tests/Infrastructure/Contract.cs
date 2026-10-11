@@ -10,7 +10,8 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <item><c>TryDeserialize</c> never throws; it returns a tag, or <see langword="false"/> with an error message.</item>
 /// <item><c>Deserialize</c> returns the same tree, or throws when <c>TryDeserialize</c> fails, with the same message:
 /// <see cref="Asn1DeserializationException"/> for invalid data, otherwise the tag factory's exception.</item>
-/// <item>The byte-array and stream overloads agree, and the stream is read from its current position.</item>
+/// <item>The byte-array and stream overloads agree, and the stream is read from its current position. Only a stream
+/// may hold octets after the encoding; it is left just after the encoding.</item>
 /// <item>A parsed tree never has a node with both children and content.</item>
 /// </list>
 /// </summary>
@@ -62,11 +63,24 @@ internal static class Contract
         using (var ms = new MemoryStream(prefixed) { Position = 3 })
         {
             var streamOk = Asn1Serializer.TryDeserialize(ms, factory(), out var streamTag, out var streamError);
-            Assert.Equal(ok, streamOk);
-            Assert.Equal(error is null, streamError is null); // offsets in the text are stream positions, so they shift
-            if (ok)
+            var streamEnd = (int)ms.Position - 3;
+            if (streamOk && streamEnd < data.Length)
             {
-                TreeAssert.Equal(tag!, streamTag!);
+                // A stream may hold more than one encoding and is left after the first; a byte array may not.
+                Assert.False(ok, "the byte array was accepted with octets after its encoding");
+                var extra = data.Length - streamEnd;
+                Assert.Equal($"The data has {extra} more {(extra == 1 ? "octet" : "octets")} at offset {streamEnd}, after the end of the encoding", error);
+                Assert.True(Asn1Serializer.TryDeserialize(data[..streamEnd], factory(), out var exact, out var exactError), exactError);
+                TreeAssert.Equal(exact, streamTag!);
+            }
+            else
+            {
+                Assert.Equal(ok, streamOk);
+                Assert.Equal(error is null, streamError is null); // offsets in the text are stream positions, so they shift
+                if (ok)
+                {
+                    TreeAssert.Equal(tag!, streamTag!);
+                }
             }
         }
 

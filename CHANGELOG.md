@@ -44,6 +44,9 @@ Parsing:
   the fragments as children and no content. `Serialize` writes them in the primitive DER form.
 - An OCTET STRING is read as encapsulated children only when every length inside it is in DER form and every SET
   inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
+- A byte array must hold exactly one encoding: octets after it are an error such as "The data has 2 more octets at
+  offset 3, after the end of the encoding"; they used to be ignored. A stream may hold more: one encoding is read
+  and the stream is left just after it.
 - Input that used to parse into a wrong tree now fails with an error: an element crossing
   the end of its container, a missing end-of-contents marker, `00` with a non-zero length inside an
   indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`. End-of-contents octets

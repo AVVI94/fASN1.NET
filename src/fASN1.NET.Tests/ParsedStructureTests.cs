@@ -289,7 +289,7 @@ public class ParsedStructureTests
     [Fact]
     public void Indefinite_EmptyContainer_HasNoContent()
     {
-        AssertTree("30 80 00 00 02 01 07", Seq());
+        AssertTree("30 80 00 00", Seq());
         AssertTree("30 80 30 80 00 00 02 01 07 00 00", Seq(Seq(), Int("07")));
         AssertTree("30 80 A0 80 00 00 00 00", Seq(new Expected(typeof(ContextSpecific_0), 0, "[0]", 2, true, false, false, [], [])));
     }
@@ -417,10 +417,25 @@ public class ParsedStructureTests
         Assert.Equal("The contents at offset 2 have a length of 5, which reaches past the end of the data", ex.Message);
     }
 
-    [Fact]
-    public void TrailingBytesAfterRoot_AreIgnored()
+    [Theory]
+    [InlineData("02 01 05 FF FF", "The data has 2 more octets at offset 3, after the end of the encoding")]
+    [InlineData("02 01 05 00 00", "The data has 2 more octets at offset 3, after the end of the encoding")]
+    [InlineData("30 80 02 01 05 00 00 00", "The data has 1 more octet at offset 7, after the end of the encoding")]
+    [InlineData("30 00 30 00", "The data has 2 more octets at offset 2, after the end of the encoding")]
+    public void OctetsAfterTheRootEncoding_Fail(string hex, string message)
     {
-        AssertTree("02 01 05 FF FF", Int("05"));
+        AssertFails(hex, message);
+    }
+
+    [Fact]
+    public void Stream_HoldingTwoEncodings_IsReadOneAtATime()
+    {
+        using var ms = new MemoryStream(H("02 01 05 30 03 02 01 07"));
+
+        Int("05").AssertMatches(Asn1Serializer.Deserialize(ms));
+        Assert.Equal(3, ms.Position);
+        Seq(Int("07")).AssertMatches(Asn1Serializer.Deserialize(ms));
+        Assert.Equal(8, ms.Position);
     }
 
     [Fact]

@@ -34,4 +34,7 @@ internal enum ParseFailureKind
     NonDerLengthInEncapsulation,
     ConstructedStringInEncapsulation,
     SetNotInDerOrderInEncapsulation,
+
+    // The data: a byte array holds exactly one encoding
+    OctetsAfterEncoding,
 }

@@ -21,9 +21,10 @@ namespace fASN1.NET.Parsing;
 internal static class Asn1Parser
 {
     /// <summary>
-    /// Parses the encoding at the source's current position. On success the source is left just past it.
+    /// Parses the encoding at the source's current position. On success the source is left just past it. With
+    /// <paramref name="wholeSource"/>, the encoding must also end where the source ends.
     /// </summary>
-    public static bool TryParse<TSource>(ref TSource source, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    public static bool TryParse<TSource>(ref TSource source, ITagFactory tagFactory, bool wholeSource, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
         where TSource : struct, IByteSource
     {
         var scanner = new StructureScanner<TSource>(source);
@@ -37,6 +38,13 @@ internal static class Asn1Parser
             }
 
             var end = scanner.Position;
+            if (wholeSource && end != source.Length)
+            {
+                tag = null;
+                error = new ParseFailure(ParseFailureKind.OctetsAfterEncoding, end, source.Length - end).ToMessage(tagFactory);
+                return false;
+            }
+
             var failure = default(ParseFailure);
             if (!TreeBuilder.TryBuild(ref source, scanner.Nodes, scanner.Fragments, tagFactory, out tag, ref failure))
             {

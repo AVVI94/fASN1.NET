@@ -70,14 +70,17 @@ public class CorpusStructureTests
 
     [Theory]
     [MemberData(nameof(Names))]
-    public void Parse_TrailingBytesDoNotChangeTheTree(string name)
+    public void Parse_OctetsAfterTheEncoding_FailForAByteArray_StayInAStream(string name)
     {
         var data = TestCorpus.Get(name);
-        var expected = Asn1Serializer.Deserialize(data);
+        byte[] followed = [.. data, 0x30, 0x03, 0x02, 0x01, 0x05, 0xFF];
 
-        var actual = Asn1Serializer.Deserialize([.. data, 0x30, 0x03, 0x02, 0x01, 0x05, 0xFF]);
+        Assert.False(Asn1Serializer.TryDeserialize(followed, out _, out var error));
+        Assert.Equal($"The data has 6 more octets at offset {data.Length}, after the end of the encoding", error);
 
-        TreeAssert.Equal(expected, actual);
+        using var ms = new MemoryStream(followed);
+        TreeAssert.Equal(Asn1Serializer.Deserialize(data), Asn1Serializer.Deserialize(ms));
+        Assert.Equal(data.Length, ms.Position);
     }
 
     [Theory]

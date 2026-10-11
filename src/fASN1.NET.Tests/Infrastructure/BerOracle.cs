@@ -11,6 +11,7 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <remarks>
 /// The oracle encodes these library decisions on top of plain BER:
 /// <list type="bullet">
+/// <item>The data holds exactly one encoding; octets after it make the data invalid.</item>
 /// <item>End-of-contents octets are valid only as the end of contents in the indefinite form (X.690 §8.1.5), where
 /// <see cref="AsnDecoder"/> consumes them; anywhere else they make the data invalid.</item>
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid elements with DER lengths
@@ -22,7 +23,16 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
 {
     public bool IsEoc => TagClass == 0 && !IsConstructed && TagNumber == 0;
 
-    public static OracleNode Decode(ReadOnlySpan<byte> data) => ReadElement(data, AsnEncodingRules.BER, out _);
+    public static OracleNode Decode(ReadOnlySpan<byte> data)
+    {
+        var root = ReadElement(data, AsnEncodingRules.BER, out var consumed);
+        if (consumed != data.Length)
+        {
+            throw new AsnContentException("Octets after the encoding");
+        }
+
+        return root;
+    }
 
     public int CountNodes() => 1 + Children.Sum(c => c.CountNodes());
 

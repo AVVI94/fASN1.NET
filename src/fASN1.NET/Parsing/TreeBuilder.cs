@@ -120,7 +120,7 @@ internal static class TreeBuilder
         buffer[start] = (byte)Tag.OctetString;
         Ber.WriteLengthOctets(length, buffer, start + IDENTIFIER_OCTET_COUNT);
         var encoded = new ByteArraySource(buffer) { Position = start };
-        return Asn1Parser.TryParse(ref encoded, tagFactory, out tag, out _);
+        return Asn1Parser.TryParse(ref encoded, tagFactory, wholeSource: true, out tag, out _);
     }
 
     /// <summary>Reads <paramref name="length"/> octets at <paramref name="start"/> into <paramref name="destination"/>.</summary>

@@ -16,6 +16,8 @@ namespace fASN1.NET;
 /// is not a valid BER encoding, <see cref="ArgumentNullException"/> for a <see langword="null"/> argument,
 /// <see cref="ArgumentException"/> for a stream that cannot seek, and lets any exception thrown by the stream or by a
 /// custom <see cref="ITagFactory"/> propagate unchanged.
+/// <para>A byte array must hold exactly one encoding. A stream may hold more: one encoding is read and the stream
+/// is left just after it, ready for the next one.</para>
 /// </remarks>
 public static partial class Asn1Serializer
 {
@@ -26,7 +28,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified byte array.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
     public static bool TryDeserialize(byte[] data, [NotNullWhen(true)] out ITag? tag)
@@ -35,7 +37,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified byte array using the specified tag factory.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
@@ -45,7 +47,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified stream.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
     public static bool TryDeserialize(Stream stream, [NotNullWhen(true)] out ITag? tag)
@@ -54,7 +56,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified stream using the specified tag factory.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
@@ -64,7 +66,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified byte array.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <param name="error">When this method returns <see langword="false"/>, contains the error message, which is the exception's message when an argument is invalid or the stream or the tag factory throws; otherwise, <see langword="null"/>.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
@@ -76,7 +78,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified byte array using the specified tag factory.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <param name="error">When this method returns <see langword="false"/>, contains the error message, which is the exception's message when an argument is invalid or the stream or the tag factory throws; otherwise, <see langword="null"/>.</param>
@@ -86,7 +88,7 @@ public static partial class Asn1Serializer
         try
         {
             var source = CreateSource(data, tagFactory);
-            return TryDeserializeCore(ref source, tagFactory, out tag, out error);
+            return TryDeserializeCore(ref source, tagFactory, wholeSource: true, out tag, out error);
         }
         catch (Exception ex)
         {
@@ -97,7 +99,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified stream.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <param name="error">When this method returns <see langword="false"/>, contains the error message, which is the exception's message when an argument is invalid or the stream or the tag factory throws; otherwise, <see langword="null"/>.</param>
     /// <returns><see langword="true"/> if the deserialization succeeds; <see langword="false"/> if the data is not valid ASN.1 or could not be read. This method never throws.</returns>
@@ -109,7 +111,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Tries to deserialize the ASN.1 data from the specified stream using the specified tag factory.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags.</param>
     /// <param name="tag">When this method returns <see langword="true"/>, contains the deserialized ASN.1 tag, or <see langword="null"/> if the deserialization fails.</param>
     /// <param name="error">When this method returns <see langword="false"/>, contains the error message, which is the exception's message when an argument is invalid or the stream or the tag factory throws; otherwise, <see langword="null"/>.</param>
@@ -119,7 +121,7 @@ public static partial class Asn1Serializer
         try
         {
             var source = CreateSource(stream, tagFactory);
-            return TryDeserializeCore(ref source, tagFactory, out tag, out error);
+            return TryDeserializeCore(ref source, tagFactory, wholeSource: false, out tag, out error);
         }
         catch (Exception ex)
         {
@@ -130,7 +132,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Deserializes the ASN.1 data from the specified byte array.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="data"/> is <see langword="null"/>.</exception>
     /// <exception cref="Asn1DeserializationException">The data is not valid ASN.1.</exception>
@@ -142,7 +144,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Deserializes the ASN.1 data from the specified byte array using the specified tag factory.
     /// </summary>
-    /// <param name="data">The byte array containing the ASN.1 data.</param>
+    /// <param name="data">The byte array holding exactly one encoding; octets after it make the data invalid.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags. Its exceptions propagate.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="data"/> or <paramref name="tagFactory"/> is <see langword="null"/>.</exception>
@@ -150,13 +152,13 @@ public static partial class Asn1Serializer
     public static ITag Deserialize(byte[] data, ITagFactory tagFactory)
     {
         var source = CreateSource(data, tagFactory);
-        return DeserializeCore(ref source, tagFactory);
+        return DeserializeCore(ref source, tagFactory, wholeSource: true);
     }
 
     /// <summary>
     /// Deserializes the ASN.1 data from the specified stream.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position. Its exceptions propagate.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it. Its exceptions propagate.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="stream"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="stream"/> cannot seek.</exception>
@@ -169,7 +171,7 @@ public static partial class Asn1Serializer
     /// <summary>
     /// Deserializes the ASN.1 data from the specified stream using the specified tag factory.
     /// </summary>
-    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position. Its exceptions propagate.</param>
+    /// <param name="stream">The seekable stream containing the ASN.1 data, read from its current position; one encoding is read and the stream is left just after it. Its exceptions propagate.</param>
     /// <param name="tagFactory">The tag factory used to create ASN.1 tags. Its exceptions propagate.</param>
     /// <returns>The deserialized ASN.1 tag.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="stream"/> or <paramref name="tagFactory"/> is <see langword="null"/>.</exception>
@@ -178,7 +180,7 @@ public static partial class Asn1Serializer
     public static ITag Deserialize(Stream stream, ITagFactory tagFactory)
     {
         var source = CreateSource(stream, tagFactory);
-        return DeserializeCore(ref source, tagFactory);
+        return DeserializeCore(ref source, tagFactory, wholeSource: false);
     }
 
     private static ByteArraySource CreateSource(byte[] data, ITagFactory tagFactory)
@@ -216,7 +218,7 @@ public static partial class Asn1Serializer
         return new StreamSource(stream);
     }
 
-    private static bool TryDeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
+    private static bool TryDeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory, bool wholeSource, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
         where TSource : struct, IByteSource
     {
         if (source.Length == 0)
@@ -226,7 +228,7 @@ public static partial class Asn1Serializer
             return false;
         }
 
-        return Asn1Parser.TryParse(ref source, tagFactory, out tag, out error);
+        return Asn1Parser.TryParse(ref source, tagFactory, wholeSource, out tag, out error);
     }
 
     /// <summary>A Try method's result for an exception: <see langword="false"/> with the exception's message.</summary>
@@ -237,10 +239,10 @@ public static partial class Asn1Serializer
         return false;
     }
 
-    private static ITag DeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory)
+    private static ITag DeserializeCore<TSource>(ref TSource source, ITagFactory tagFactory, bool wholeSource)
         where TSource : struct, IByteSource
     {
-        return TryDeserializeCore(ref source, tagFactory, out var tag, out var error)
+        return TryDeserializeCore(ref source, tagFactory, wholeSource, out var tag, out var error)
             ? tag
             : throw new Asn1DeserializationException(error);
     }
