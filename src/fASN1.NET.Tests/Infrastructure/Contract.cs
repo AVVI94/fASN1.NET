@@ -62,7 +62,9 @@ internal static class Contract
             Assert.Equal(ok, streamOk);
             Assert.Equal(error is null, streamError is null); // offsets in the text are stream positions, so they shift
             if (ok)
+            {
                 TreeAssert.Equal(tag!, streamTag!);
+            }
         }
 
         if (data.Length == 0)
@@ -78,7 +80,9 @@ internal static class Contract
             var ex = Record.Exception(() => Asn1Serializer.Deserialize(data, factory()));
             Assert.NotNull(ex);
             if (ex is Asn1DeserializationException)
+            {
                 Assert.Equal(error, ex.Message);
+            }
         }
 
         return (tag, error);
@@ -93,7 +97,10 @@ internal static class Contract
         public ITag Create(int tagClass, bool isConstructed, int tagNumber, byte[]? content = null)
         {
             if (++_calls == throwOnCall)
+            {
                 throw new InvalidOperationException($"factory failure on call {throwOnCall}");
+            }
+
             return _inner.Create(tagClass, isConstructed, tagNumber, content);
         }
     }

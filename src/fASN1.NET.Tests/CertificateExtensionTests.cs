@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using fASN1.NET.Tests.Infrastructure;
-using SanIPAddress = fASN1.NET.Tags.San.IPAddress;
 using SanDnsName = fASN1.NET.Tags.San.DnsName;
+using SanIPAddress = fASN1.NET.Tags.San.IPAddress;
 
 namespace fASN1.NET.Tests;
 
@@ -46,7 +46,10 @@ public class CertificateExtensionTests
     {
         var san = DotNetExtensions(name)?.OfType<X509SubjectAlternativeNameExtension>().SingleOrDefault();
         if (san is null)
+        {
             return;
+        }
+
         var tag = Asn1Serializer.Deserialize(TestCorpus.Get(name));
 
         Assert.True(tag.TryGetSubjectAlternativeName(out var items));
@@ -105,9 +108,15 @@ public class CertificateExtensionTests
             using var cert = new X509Certificate2(TestCorpus.Get(name));
 #pragma warning restore SYSLIB0057
             if (!cert.RawData.AsSpan().SequenceEqual(TestCorpus.Get(name)))
+            {
                 return null; // a CMS blob loads as one of the certificates inside it
+            }
+
             if (cert.Version < 3)
+            {
                 return null; // v1 and v2 certificates are not supported by the helpers
+            }
+
             return cert.Extensions.Cast<X509Extension>().ToList();
         }
         catch (CryptographicException)

@@ -122,7 +122,9 @@ public class SubjectDirectoryAttributes
         List<string> countryOfCitizenship = [];
 
         if (sda.Children.Count == 0)
+        {
             return Empty;
+        }
 
         // SubjectDirectoryAttributes ::= SEQUENCE SIZE (1..MAX) OF Attribute
         // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF AttributeValue }
@@ -145,7 +147,9 @@ public class SubjectDirectoryAttributes
             {
                 // RFC 3739: GeneralizedTime, YYYYMMDD000000Z
                 if (ContentParsing.Asn1Time.TryParse(values[0], out var birth))
+                {
                     dateOfBirthDate = DateTime.SpecifyKind(birth.Date, DateTimeKind.Unspecified);
+                }
             }
             else if (oid.SequenceEqual(InternalExtensions._placeOfBirthOidSequence))
             {

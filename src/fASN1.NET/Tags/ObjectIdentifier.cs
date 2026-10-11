@@ -30,7 +30,10 @@ public class ObjectIdentifier : TagBase
     private string DebuggerDisplay()
     {
         if (Content is not { Length: > 0 })
+        {
             return "ObjectIdentifier: (empty)";
+        }
+
         var o = Oid.OID.GetOrCreate(Content);
         return $"ObjectIdentifier: {o.Value}{(string.IsNullOrEmpty(o.FriendlyName) ? "" : $" ({o.FriendlyName})")}";
     }

@@ -34,13 +34,20 @@ internal static class TestCorpus
     {
         var result = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var file in Directory.GetFiles(Path.Combine(_root, "corpus"), "*.b64"))
+        {
             result["file:" + Path.GetFileNameWithoutExtension(file)] = Convert.FromBase64String(File.ReadAllText(file).Trim());
+        }
 
         foreach (var (name, data) in Generated())
+        {
             result["gen:" + name] = data;
+        }
 
         foreach (var (name, data) in Synthetic())
+        {
             result["syn:" + name] = data;
+        }
+
         return result;
     }
 
@@ -124,7 +131,9 @@ internal static class TestCorpus
             yield return ("rsa_leaf_" + name, leaf.RawData);
 
             if (name == "ku_all")
+            {
                 yield return ("rsa_csr_" + name, req.CreateSigningRequest());
+            }
         }
 
         // Binary values that look like something else: key identifiers that are printable text or valid DER, an
@@ -243,7 +252,9 @@ internal static class TestCorpus
             using (w.PushSetOf())
             {
                 for (int i = 0; i < 300; i++)
+                {
                     w.WriteInteger(i);
+                }
             }
             using (w.PushSequence())
             {

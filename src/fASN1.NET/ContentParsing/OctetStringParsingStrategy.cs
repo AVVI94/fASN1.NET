@@ -32,7 +32,9 @@ public class OctetStringParsingStrategy : IContentParsingStrategy
         foreach (var c in text)
         {
             if (char.IsControl(c) && c is not '\t' and not '\n' and not '\r')
+            {
                 return ToHex(content);
+            }
         }
         return text;
     }

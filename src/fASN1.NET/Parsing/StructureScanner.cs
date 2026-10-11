@@ -99,7 +99,9 @@ internal ref partial struct StructureScanner<TSource>
             insideIndefiniteForm = enclosing.IsIndefiniteForm;
             // A definite-form ancestor's contents end here, so the end-of-contents octets are missing.
             if (insideIndefiniteForm && start >= enclosing.ContentsBound)
+            {
                 return Fail(new ParseFailure(ParseFailureKind.MissingEndOfContents, enclosing.ContentsStart));
+            }
         }
 
         if (!IdentifierAndLengthReader.TryRead(ref _source, out var encoding, out var failure))
@@ -109,7 +111,9 @@ internal ref partial struct StructureScanner<TSource>
                 : failure);
         }
         if (_source.Position > CurrentContentsBound)
+        {
             return FailCrossingContentsBound();
+        }
 
         if (encoding.IsEndOfContentsOctets && insideIndefiniteForm)
         {
@@ -121,14 +125,21 @@ internal ref partial struct StructureScanner<TSource>
         {
             ref var enclosing = ref _enclosing.Last;
             if (enclosing.MustBeDer && !CheckDerForm(encoding, enclosing.Kind))
+            {
                 return ScanResult.Failed;
+            }
+
             if (enclosing.Kind is EnclosingEncodingKind.ConstructedString or EnclosingEncodingKind.ConstructedFragment)
+            {
                 return ScanFragment(encoding);
+            }
         }
 
         var fragmentTagNumber = Ber.FragmentTagNumber(encoding.IdentifierOctet);
         if (fragmentTagNumber != 0)
+        {
             return EnterConstructedString(encoding, fragmentTagNumber);
+        }
 
         var nodeIndex = _nodes.Add(new ScannedNode
         {
@@ -139,11 +150,16 @@ internal ref partial struct StructureScanner<TSource>
             IsIndefiniteForm = encoding.IsIndefiniteForm,
         });
         if (Ber.IsConstructed(encoding.IdentifierOctet))
+        {
             return EnterContents(new EnclosingEncoding { Kind = EnclosingEncodingKind.Constructed, IdentifierAndLength = encoding, NodeIndex = nodeIndex });
+        }
         // The indefinite form is valid only for constructed encodings, so such an OCTET STRING is not entered;
         // skipping its contents fails instead.
         if (Ber.MayEncapsulate(encoding.IdentifierOctet) && !encoding.IsIndefiniteForm)
+        {
             return EnterContents(new EnclosingEncoding { Kind = EnclosingEncodingKind.EncapsulatingOctetString, IdentifierAndLength = encoding, NodeIndex = nodeIndex });
+        }
+
         return SkipContents(encoding);
     }
 
@@ -177,7 +193,9 @@ internal ref partial struct StructureScanner<TSource>
     {
         ref var enclosing = ref _enclosing.Last;
         if (enclosing.MustBeDer && !CheckDerSetOrder(ref enclosing))
+        {
             return ScanResult.Failed;
+        }
 
         enclosing.PreviousNestedEncodingStart = enclosing.NestedEncodingStart;
         enclosing.NestedEncodingCount++;
@@ -191,12 +209,17 @@ internal ref partial struct StructureScanner<TSource>
     {
         ref var innermost = ref _enclosing.Last;
         if (innermost.IsIndefiniteForm || _source.Position < innermost.ContentsEnd)
+        {
             return ScanEncoding();
+        }
 
         var enclosing = _enclosing.RemoveLast();
         var endsExactly = _source.Position == enclosing.ContentsEnd;
         if (!endsExactly)
+        {
             _failure = new ParseFailure(ParseFailureKind.ContentsLengthMismatch, enclosing.ContentsStart);
+        }
+
         return LeaveContents(enclosing, nestedEncodingsValid: endsExactly);
     }
 
@@ -233,11 +256,19 @@ internal ref partial struct StructureScanner<TSource>
     private ScanResult SkipContents(in IdentifierAndLength encoding)
     {
         if (encoding.ContentsLength is not { } length)
+        {
             return Fail(new ParseFailure(ParseFailureKind.IndefiniteFormInPrimitive, encoding.ContentsStart));
+        }
+
         if (length > _source.Length - _source.Position)
+        {
             return Fail(new ParseFailure(ParseFailureKind.ContentsPastEndOfData, encoding.ContentsStart, identifierOctet: encoding.IdentifierOctet, tagNumber: encoding.TagNumber));
+        }
+
         if (_source.Position + length > CurrentContentsBound)
+        {
             return FailCrossingContentsBound();
+        }
 
         _source.Position += length;
         return ScanResult.Succeeded;

@@ -50,7 +50,9 @@ internal static class InternalExtensions
     public static bool IsV3Certificate(ITag tag)
     {
         if (!IsSignedSequence(tag) || tag.Children[0] is not { TagClass: 0, TagNumber: (int)Tag.Sequence } tbs || tbs.Children.Count < 7)
+        {
             return false;
+        }
 
         var version = tbs.Children[0];
         return IsContextConstructed(version, 0)
@@ -79,7 +81,9 @@ internal static class InternalExtensions
     public static bool IsCertificationRequest(ITag tag)
     {
         if (!IsSignedSequence(tag) || tag.Children[0] is not { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 3 or 4 } info)
+        {
             return false;
+        }
 
         return info.Children[0] is { TagClass: 0, TagNumber: (int)Tag.Integer } version
                && version.Content.SequenceEqual(_version0Sequence)
@@ -130,7 +134,9 @@ internal static class InternalExtensions
             foreach (var field in TbsFields(root).Skip(7))
             {
                 if (IsContextConstructed(field, 3) && field.Children.Count == 1 && field.Children[0].Is(Tag.Sequence))
+                {
                     return field.Children[0].Children;
+                }
             }
             return [];
         }
@@ -139,7 +145,10 @@ internal static class InternalExtensions
             // Attribute ::= SEQUENCE { type OBJECT IDENTIFIER, values SET OF value }; extensionRequest has one value.
             var info = root.Children[0];
             if (info.Children.Count < 4)
+            {
                 return []; // no attributes
+            }
+
             foreach (var attribute in info.Children[3].Children)
             {
                 if (attribute is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
@@ -163,7 +172,9 @@ internal static class InternalExtensions
         foreach (var extension in GetExtensions(root, certificatesOnly))
         {
             if (IsExtension(extension) && IsOid(extension.Children[0], oid))
+            {
                 return extension;
+            }
         }
         return null;
     }
@@ -196,7 +207,10 @@ internal static class InternalExtensions
     {
         var value = GetExtensionValue(extension);
         if (value.Children.Count == 1)
+        {
             return value.Children[0];
+        }
+
         if (value.Children.Count == 0 && value.Content.Length > 0
             && Asn1Serializer.TryDeserialize(value.Content, out var decoded, out _))
         {
@@ -231,7 +245,9 @@ internal static class InternalExtensions
     public static byte[] GetRawContent(ITag tag)
     {
         if (tag.Children.Count == 0)
+        {
             return tag.Content;
+        }
 
         var bytes = new List<byte>();
         foreach (var child in tag.Children)
@@ -273,7 +289,9 @@ internal static class InternalExtensions
     {
         items = new List<string>();
         if (oid is null or { Length: 0 } || tag.Children.Count == 0)
+        {
             return false;
+        }
 
         // Pre-order walk with an explicit stack, so values come in document order and deep trees cannot overflow
         // the call stack.

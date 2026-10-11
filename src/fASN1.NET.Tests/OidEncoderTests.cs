@@ -92,7 +92,9 @@ public class OidEncoderTests
             for (int j = 0; j < bytes.Length; j++)
             {
                 if (random.Next(3) != 0)
+                {
                     bytes[j] &= 0x7F;
+                }
             }
 
             string? expected;

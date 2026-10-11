@@ -194,7 +194,10 @@ public class ParsedStructureTests
     internal static byte[] EncodeLength(int length)
     {
         if (length < 0x80)
+        {
             return [(byte)length];
+        }
+
         var bytes = BitConverter.GetBytes(length).Reverse().SkipWhile(b => b == 0).ToArray();
         return [(byte)(0x80 | bytes.Length), .. bytes];
     }

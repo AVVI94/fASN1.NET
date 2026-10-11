@@ -23,9 +23,15 @@ public class Unknown : TagBase
     public Unknown(int tagClass, int tagNumber, bool isConstructed, byte[]? content = null, List<ITag>? children = null) : base(content, children)
     {
         if (tagClass is < 0 or > 3)
+        {
             throw new ArgumentOutOfRangeException(nameof(tagClass), tagClass, "The tag class is 0 to 3.");
+        }
+
         if (tagNumber < 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(tagNumber), tagNumber, "A tag number cannot be negative.");
+        }
+
         _tagClass = (byte)tagClass;
         _tagNumber = tagNumber;
         _isConstructed = isConstructed;

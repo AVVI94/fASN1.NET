@@ -156,7 +156,9 @@ public class DeepNestingTests
         {
             data[pos++] = identifier;
             foreach (var b in ParsedStructureTests.EncodeLength((int)lengths[i]))
+            {
                 data[pos++] = b;
+            }
         }
         innermost.CopyTo(data, pos);
         return data;
@@ -177,7 +179,10 @@ public class DeepNestingTests
         }
         Assert.Empty(node.Children);
         if (node is Integer)
+        {
             Assert.Equal([0x05], node.Content);
+        }
+
         return node;
     }
 }

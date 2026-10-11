@@ -163,7 +163,9 @@ public class BerTests
                 using (writer.PushSetOf())
                 {
                     foreach (var value in new[] { 300, 2, -5, 70000 })
+                    {
                         writer.WriteInteger(value);
+                    }
                 }
                 using (writer.PushSequence(new Asn1Tag(TagClass.ContextSpecific, 40)))
                 {
@@ -225,12 +227,16 @@ public class BerTests
             var tag = Asn1Tag.Decode(element.Span, out _);
             AsnDecoder.ReadEncodedValue(element.Span, AsnEncodingRules.DER, out var offset, out var length, out _);
             if (!tag.IsConstructed)
+            {
                 continue;
+            }
 
             Assert.False(tag.TagClass == TagClass.Universal && tag.TagValue is 3 or 4 or 7 or 12 or (>= 18 and <= 28) or 30,
                 $"constructed string {tag} in DER output");
             if (tag.TagClass == TagClass.Universal && tag.TagValue == 17)
+            {
                 new AsnReader(element, AsnEncodingRules.DER).ReadSetOf(); // throws when out of order
+            }
 
             var content = element.Slice(offset, length);
             while (!content.IsEmpty)

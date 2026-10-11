@@ -131,7 +131,9 @@ public class DirectoryName : ISanItem
             foreach (var attribute in set.Children)
             {
                 if (InternalExtensions.TryGetAttributeTypeAndValue(attribute, out var type, out var value))
+                {
                     Content.Add(new RelativeDistinguishedName(OID.GetOrCreate(type.Content), value.ContentToString()));
+                }
             }
         }
     }
@@ -154,7 +156,10 @@ public class EdiPartyName : ISanItem
         foreach (var field in content.Children)
         {
             if (field.TagClass != 2 || field.Children.Count != 1)
+            {
                 continue;
+            }
+
             switch (field.TagNumber)
             {
                 case 0:

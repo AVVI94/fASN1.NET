@@ -17,7 +17,10 @@ internal static class TagNames
     {
         var names = new string[32];
         for (int i = 0; i < names.Length; i++)
+        {
             names[i] = name(i);
+        }
+
         return names;
     }
 

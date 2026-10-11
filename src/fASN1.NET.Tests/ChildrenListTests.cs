@@ -47,7 +47,9 @@ public class ChildrenListTests
         Assert.Throws<InvalidOperationException>(() =>
         {
             foreach (var _ in children)
+            {
                 children.Add(new Null());
+            }
         });
 
         children.Clear();
@@ -116,13 +118,17 @@ public class ChildrenListTests
             Parallel.For(0, 4, thread =>
             {
                 for (int i = 0; i < leaves.Count; i++)
+                {
                     seen[i, thread] = leaves[i].Children;
+                }
             });
 
             for (int i = 0; i < leaves.Count; i++)
             {
                 for (int t = 1; t < 4; t++)
+                {
                     Assert.Same(seen[i, 0], seen[i, t]);
+                }
             }
         }
     }

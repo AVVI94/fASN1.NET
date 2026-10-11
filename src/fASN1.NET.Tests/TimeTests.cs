@@ -117,7 +117,9 @@ public class TimeTests
         var data = TestCorpus.Get(name);
         var tag = Asn1Serializer.Deserialize(data);
         if (!tag.IsCertificate())
+        {
             return;
+        }
 #pragma warning disable SYSLIB0057 // the corpus holds raw DER; X509CertificateLoader is .NET 9+
         using var certificate = new X509Certificate2(data);
 #pragma warning restore SYSLIB0057

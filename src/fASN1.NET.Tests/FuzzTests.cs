@@ -38,9 +38,14 @@ public class FuzzTests
         {
             var data = BerGenerator.Document(rng);
             if (CheckAgainstOracle(data))
+            {
                 oracleAccepted++;
+            }
+
             if (rng.Next(2) == 0)
+            {
                 CheckAgainstOracle(Mutate(data, rng));
+            }
         }
         // Keeps the oracle comparison from silently becoming vacuous if the generator drifts.
         Assert.True(oracleAccepted > COUNT / 2, $"only {oracleAccepted} of {COUNT} generated documents were valid BER");
@@ -94,7 +99,10 @@ public class FuzzTests
         {
             int h = 17;
             foreach (var c in s)
+            {
                 h = (h * 31) + c;
+            }
+
             return h;
         }
     }
@@ -139,11 +147,20 @@ internal static class BerGenerator
     {
         int roll = rng.Next(100);
         if (depth >= 6 || roll < 40)
+        {
             return Primitive(rng, depth);
+        }
+
         if (roll < 55)
+        {
             return Encapsulating(rng, depth);
+        }
+
         if (roll < 65)
+        {
             return ConstructedString(rng);
+        }
+
         return Constructed(rng, depth);
     }
 
@@ -175,7 +192,10 @@ internal static class BerGenerator
             var data = new byte[rng.Next(6)];
             rng.NextBytes(data);
             if (fragmentTag == 0x03)
+            {
                 data = [(byte)(rng.Next(10) == 0 ? rng.Next(8) : 0), .. data]; // unused bits
+            }
+
             var identifier = rng.Next(20) == 0 ? (byte)0x02 : fragmentTag;
             body.AddRange(Tlv([identifier], data, rng, allowIndefinite: false));
         }
@@ -188,7 +208,10 @@ internal static class BerGenerator
         var content = new byte[rng.Next(rng.Next(10) == 0 ? 300 : 6)];
         rng.NextBytes(content);
         if (tag == 0x03 && content.Length > 0 && rng.Next(2) == 0)
+        {
             content[0] = 0;
+        }
+
         return Tlv(Identifier(tag, rng), content, rng, allowIndefinite: false);
     }
 
@@ -197,10 +220,16 @@ internal static class BerGenerator
         var body = new List<byte>();
         int count = 1 + rng.Next(3);
         for (int i = 0; i < count; i++)
+        {
             body.AddRange(Node(rng, depth + 1));
+        }
+
         bool bitString = rng.Next(4) == 0;
         if (bitString)
+        {
             body.Insert(0, 0x00);
+        }
+
         return Tlv([bitString ? (byte)0x03 : (byte)0x04], body.ToArray(), rng, allowIndefinite: false);
     }
 
@@ -213,7 +242,9 @@ internal static class BerGenerator
         {
             body.AddRange(Node(rng, depth + 1));
             if (rng.Next(25) == 0)
+            {
                 body.AddRange([0x00, 0x00]);
+            }
         }
         return Tlv(Identifier(tag, rng), body.ToArray(), rng, allowIndefinite: true);
     }
@@ -225,11 +256,17 @@ internal static class BerGenerator
     private static byte[] Identifier(byte tag, Random rng)
     {
         if (tag == 0x00 || rng.Next(8) != 0)
+        {
             return [tag];
+        }
+
         var number = 31 + rng.Next(5000);
         var digits = new List<byte>();
         for (var n = number; n > 0; n >>= 7)
+        {
             digits.Insert(0, (byte)((n & 0x7F) | (digits.Count == 0 ? 0 : 0x80)));
+        }
+
         return [(byte)((tag & 0xE0) | 0x1F), .. digits];
     }
 
@@ -252,7 +289,9 @@ internal static class BerGenerator
             var padded = new byte[extra + minimal.Length];
             minimal.CopyTo(padded, extra);
             if (padded.Length <= 6)
+            {
                 len = [(byte)(0x80 | padded.Length), .. padded];
+            }
         }
         result.AddRange(len);
         result.AddRange(content);

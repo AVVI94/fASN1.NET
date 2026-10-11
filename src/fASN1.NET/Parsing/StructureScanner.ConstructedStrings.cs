@@ -57,11 +57,16 @@ internal ref partial struct StructureScanner<TSource>
         var stringNodeIndex = enclosing.NodeIndex;
         var skipped = SkipContents(encoding);
         if (skipped != ScanResult.Succeeded)
+        {
             return skipped;
+        }
 
         var fragment = new ContentsFragment { Start = encoding.ContentsStart, Length = encoding.ContentsLength!.Value };
         if (fragmentTagNumber == (int)Tag.BitString && !TryTakeUnusedBits(ref fragment, encoding.IdentifierStart, ref _nodes[stringNodeIndex]))
+        {
             return ScanResult.Failed;
+        }
+
         _fragments.Add(fragment);
         return ScanResult.Succeeded;
     }
@@ -74,14 +79,18 @@ internal ref partial struct StructureScanner<TSource>
     {
         // Unused bits in the previous fragment mean that one had to be the last.
         if (bitString.UnusedBits != 0 || fragment.Length == 0)
+        {
             return FailBitStringFragment(fragmentStart);
+        }
 
         var resume = _source.Position;
         _source.Position = fragment.Start;
         bitString.UnusedBits = _source.ReadByte();
         _source.Position = resume;
         if (bitString.UnusedBits > 7 || (fragment.Length == 1 && bitString.UnusedBits != 0))
+        {
             return FailBitStringFragment(fragmentStart);
+        }
 
         fragment.Start++;
         fragment.Length--;
@@ -99,7 +108,9 @@ internal ref partial struct StructureScanner<TSource>
             length += fragment.Length;
         }
         if (length > int.MaxValue)
+        {
             return Fail(new ParseFailure(ParseFailureKind.LengthTooLarge, constructedString.IdentifierAndLength.IdentifierStart));
+        }
 
         node.ContentsLength = length;
         return ScanResult.Succeeded;

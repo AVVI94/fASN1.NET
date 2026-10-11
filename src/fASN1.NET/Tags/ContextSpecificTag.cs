@@ -20,7 +20,10 @@ public class ContextSpecificTag : TagBase
     public ContextSpecificTag(int tagNumber, bool isConstructed, byte[]? content = null, IList<ITag>? children = null) : base(content, children)
     {
         if (tagNumber < 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(tagNumber), tagNumber, "A tag number cannot be negative.");
+        }
+
         _tagNumber = tagNumber;
         _isConstructed = isConstructed;
     }

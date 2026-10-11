@@ -27,11 +27,15 @@ internal static class Asn1Time
         }
         var second = 0;
         if (pos < content.Length && IsDigit(content[pos]) && !TryReadDigits(content, ref pos, 2, out second))
+        {
             return false;
+        }
 
         // UTCTime always has a zone, and an offset always has minutes.
         if (!TryReadZone(content, ref pos, requireMinutes: true, out var offset) || offset is null || pos != content.Length)
+        {
             return false;
+        }
 
         return TryCreate(UTCTime.ExpandYear(year), month, day, hour, minute, second, 0, offset, out value);
     }
@@ -57,12 +61,18 @@ internal static class Asn1Time
         if (pos < content.Length && IsDigit(content[pos]))
         {
             if (!TryReadDigits(content, ref pos, 2, out minute))
+            {
                 return false;
+            }
+
             unit = TimeSpan.TicksPerMinute;
             if (pos < content.Length && IsDigit(content[pos]))
             {
                 if (!TryReadDigits(content, ref pos, 2, out second))
+                {
                     return false;
+                }
+
                 unit = TimeSpan.TicksPerSecond;
             }
         }
@@ -83,12 +93,17 @@ internal static class Asn1Time
                 pos++;
             }
             if (pos == start)
+            {
                 return false;
+            }
+
             fractionTicks = (long)(fraction * unit);
         }
 
         if (!TryReadZone(content, ref pos, requireMinutes: false, out var offset) || pos != content.Length)
+        {
             return false;
+        }
 
         return TryCreate(year, month, day, hour, minute, second, fractionTicks, offset, out value);
     }
@@ -135,7 +150,10 @@ internal static class Asn1Time
     {
         offset = null;
         if (pos == content.Length)
+        {
             return true;
+        }
+
         if (content[pos] == 'Z')
         {
             pos++;
@@ -143,15 +161,22 @@ internal static class Asn1Time
             return true;
         }
         if (content[pos] is not ((byte)'+' or (byte)'-'))
+        {
             return false;
+        }
 
         var negative = content[pos] == '-';
         pos++;
         if (!TryReadDigits(content, ref pos, 2, out var hours) || hours > 23)
+        {
             return false;
+        }
+
         var minutes = 0;
         if ((requireMinutes || pos < content.Length) && (!TryReadDigits(content, ref pos, 2, out minutes) || minutes > 59))
+        {
             return false;
+        }
 
         var span = new TimeSpan(hours, minutes, 0);
         offset = negative ? -span : span;
@@ -178,7 +203,10 @@ internal static class Asn1Time
         // The written time is local time at the given offset; UTC is that time minus the offset.
         var utcTicks = local.Ticks - offset.Value.Ticks;
         if (utcTicks < DateTime.MinValue.Ticks || utcTicks > DateTime.MaxValue.Ticks)
+        {
             return false;
+        }
+
         value = new DateTime(utcTicks, DateTimeKind.Utc);
         return true;
     }
@@ -187,12 +215,18 @@ internal static class Asn1Time
     {
         value = 0;
         if (pos + count > content.Length)
+        {
             return false;
+        }
+
         for (int i = 0; i < count; i++)
         {
             var b = content[pos + i];
             if (!IsDigit(b))
+            {
                 return false;
+            }
+
             value = (value * 10) + (b - '0');
         }
         pos += count;

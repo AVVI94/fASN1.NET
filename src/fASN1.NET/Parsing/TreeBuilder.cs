@@ -32,25 +32,37 @@ internal static class TreeBuilder
                 if (node.IsConstructedString)
                 {
                     if (!TryBuildConstructedString(ref source, node, fragments.Slice(node.FirstFragment, node.FragmentCount), tagFactory, out tag, ref failure))
+                    {
                         return false;
+                    }
                 }
                 else
                 {
                     tag = Ber.CreateTag(tagFactory, node.IdentifierOctet, node.TagNumber);
                     if (!TryFillContents(ref source, tag, node, ref failure))
+                    {
                         return false;
+                    }
                 }
 
                 if (parents.Count == 0)
+                {
                     root = tag;
+                }
                 else
+                {
                     parents.Last.Add(tag);
+                }
 
                 if (node.ContentsAreChildren && node.ChildCount > 0)
+                {
                     parents.Add(ExpectChildren(tag, node.ChildCount));
+                }
 
                 while (parents.Count > 0 && parents.Last.RemainingChildren == 0)
+                {
                     parents.RemoveLast();
+                }
             }
             return root is not null;
         }
@@ -75,7 +87,10 @@ internal static class TreeBuilder
         var offset = isOctetString ? 6 : 0;
         var buffer = new byte[offset + node.ContentsLength];
         if (node.IdentifierOctet == (int)Tag.BitString)
+        {
             buffer[offset++] = (byte)node.UnusedBits;
+        }
+
         foreach (var fragment in fragments)
         {
             if (!TryReadInto(ref source, buffer, offset, fragment.Start, fragment.Length))
@@ -100,7 +115,10 @@ internal static class TreeBuilder
         buffer[start] = (byte)Tag.OctetString;
         buffer[start + 1] = (byte)(lengthOctets == 0 ? length : Ber.LONG_FORM_FLAG | lengthOctets);
         for (int i = lengthOctets; i > 0; i--, length >>= 8)
+        {
             buffer[start + 1 + i] = (byte)length;
+        }
+
         var encoded = new ByteArraySource(buffer) { Position = start };
         return Asn1Parser.TryParse(ref encoded, tagFactory, out tag, out _);
     }
@@ -115,7 +133,10 @@ internal static class TreeBuilder
         {
             var count = source.Read(destination, offset, end - offset);
             if (count == 0)
+            {
                 return false;
+            }
+
             offset += count;
         }
         return true;
@@ -129,18 +150,29 @@ internal static class TreeBuilder
         {
             // Definite-form contents with no nested encodings give the tag empty contents, as a primitive encoding would.
             if (node.ChildCount == 0 && !node.IsIndefiniteForm && TagBase.GetChildCount(tag) == 0)
+            {
                 tag.Content = [];
+            }
+
             return true;
         }
 
         if (node.IsEncapsulationRejected && TagBase.GetChildCount(tag) > 0)
+        {
             tag.Children.Clear();
+        }
+
         if (TagBase.GetChildCount(tag) > 0)
+        {
             return true; // children the factory gave the tag take the place of contents
+        }
 
         var contents = ReadContents(ref source, tag, node.ContentsStart, node.ContentsLength, ref failure);
         if (contents is null)
+        {
             return false;
+        }
+
         tag.Content = contents;
         return true;
     }
@@ -148,7 +180,9 @@ internal static class TreeBuilder
     private static PendingParent ExpectChildren(ITag tag, int childCount)
     {
         if (tag is TagBase builtIn && builtIn.ChildCount == 0 && builtIn.Content.Length == 0)
+        {
             return new PendingParent { ChildArray = builtIn.InitializeChildArray(childCount), RemainingChildren = childCount };
+        }
 
         // A custom tag, or one the factory created with children already: append through its own list.
         return new PendingParent { ChildList = tag.Children, RemainingChildren = childCount };
@@ -163,7 +197,9 @@ internal static class TreeBuilder
         where TSource : struct, IByteSource
     {
         if (length == 0)
+        {
             return [];
+        }
 
         source.Position = start;
         var contents = new byte[length];

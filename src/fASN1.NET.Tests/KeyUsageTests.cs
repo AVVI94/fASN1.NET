@@ -24,7 +24,10 @@ public class KeyUsageTests
 
         Assert.Equal(expected is not null, found);
         if (expected is null)
+        {
             return;
+        }
+
         Assert.Equal(expected.Value.Flags, ToFlags(ku));
         Assert.Equal(expected.Value.Critical, ku.Critical);
     }
@@ -36,7 +39,9 @@ public class KeyUsageTests
         var data = TestCorpus.Get(name);
         var tag = Asn1Serializer.Deserialize(data);
         if (!tag.TryGetKeyUsage(out var ku))
+        {
             return;
+        }
 
         AssertRendered(tag, ku);
     }
@@ -83,15 +88,51 @@ public class KeyUsageTests
     private static X509KeyUsageFlags ToFlags(KeyUsage ku)
     {
         X509KeyUsageFlags flags = 0;
-        if (ku.DigitalSignature) flags |= X509KeyUsageFlags.DigitalSignature;
-        if (ku.NonRepudiation) flags |= X509KeyUsageFlags.NonRepudiation;
-        if (ku.KeyEncipherment) flags |= X509KeyUsageFlags.KeyEncipherment;
-        if (ku.DataEncipherment) flags |= X509KeyUsageFlags.DataEncipherment;
-        if (ku.KeyAgreement) flags |= X509KeyUsageFlags.KeyAgreement;
-        if (ku.KeyCertSign) flags |= X509KeyUsageFlags.KeyCertSign;
-        if (ku.CRLSign) flags |= X509KeyUsageFlags.CrlSign;
-        if (ku.EncipherOnly) flags |= X509KeyUsageFlags.EncipherOnly;
-        if (ku.DecipherOnly) flags |= X509KeyUsageFlags.DecipherOnly;
+        if (ku.DigitalSignature)
+        {
+            flags |= X509KeyUsageFlags.DigitalSignature;
+        }
+
+        if (ku.NonRepudiation)
+        {
+            flags |= X509KeyUsageFlags.NonRepudiation;
+        }
+
+        if (ku.KeyEncipherment)
+        {
+            flags |= X509KeyUsageFlags.KeyEncipherment;
+        }
+
+        if (ku.DataEncipherment)
+        {
+            flags |= X509KeyUsageFlags.DataEncipherment;
+        }
+
+        if (ku.KeyAgreement)
+        {
+            flags |= X509KeyUsageFlags.KeyAgreement;
+        }
+
+        if (ku.KeyCertSign)
+        {
+            flags |= X509KeyUsageFlags.KeyCertSign;
+        }
+
+        if (ku.CRLSign)
+        {
+            flags |= X509KeyUsageFlags.CrlSign;
+        }
+
+        if (ku.EncipherOnly)
+        {
+            flags |= X509KeyUsageFlags.EncipherOnly;
+        }
+
+        if (ku.DecipherOnly)
+        {
+            flags |= X509KeyUsageFlags.DecipherOnly;
+        }
+
         return flags;
     }
 
@@ -120,7 +161,10 @@ public class KeyUsageTests
 
         var ext = extensions.FirstOrDefault(e => e.Oid?.Value == "2.5.29.15");
         if (ext is null)
+        {
             return null;
+        }
+
         return (new X509KeyUsageExtension(ext, ext.Critical).KeyUsages, ext.Critical);
     }
 }

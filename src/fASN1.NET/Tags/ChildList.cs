@@ -34,13 +34,19 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
         get
         {
             if ((uint)index >= (uint)_count)
+            {
                 throw new ArgumentOutOfRangeException(nameof(index));
+            }
+
             return _items[index];
         }
         set
         {
             if ((uint)index >= (uint)_count)
+            {
                 throw new ArgumentOutOfRangeException(nameof(index));
+            }
+
             _items[index] = value;
             _version++;
         }
@@ -49,7 +55,10 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
     public void Add(ITag item)
     {
         if (_count == _items.Length)
+        {
             Grow();
+        }
+
         _items[_count++] = item;
         _version++;
     }
@@ -57,9 +66,15 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
     public void Insert(int index, ITag item)
     {
         if ((uint)index > (uint)_count)
+        {
             throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
         if (_count == _items.Length)
+        {
             Grow();
+        }
+
         Array.Copy(_items, index, _items, index + 1, _count - index);
         _items[index] = item;
         _count++;
@@ -69,7 +84,10 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
     public void RemoveAt(int index)
     {
         if ((uint)index >= (uint)_count)
+        {
             throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
         _count--;
         Array.Copy(_items, index + 1, _items, index, _count - index);
         _items[_count] = null!;
@@ -80,7 +98,10 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
     {
         var index = IndexOf(item);
         if (index < 0)
+        {
             return false;
+        }
+
         RemoveAt(index);
         return true;
     }
@@ -104,11 +125,16 @@ internal sealed class ChildList : IList<ITag>, IReadOnlyList<ITag>
         for (int i = 0; i < _count; i++)
         {
             if (version != _version)
+            {
                 throw new InvalidOperationException("Collection was modified; enumeration operation may not execute.");
+            }
+
             yield return _items[i];
         }
         if (version != _version)
+        {
             throw new InvalidOperationException("Collection was modified; enumeration operation may not execute.");
+        }
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

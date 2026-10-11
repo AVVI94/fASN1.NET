@@ -308,7 +308,9 @@ public class CertificateHelperTests
                 using (writer.PushSetOf())
                 {
                     foreach (var country in countries)
+                    {
                         writer.WriteCharacterString(UniversalTagNumber.PrintableString, country);
+                    }
                 }
             }
         }

@@ -130,7 +130,10 @@ public readonly struct KeyUsage
         get
         {
             if (KeyUsages is null)
+            {
                 return 0;
+            }
+
             byte result = 0;
 
             for (int i = 0; i < 8; i++)
@@ -203,23 +206,49 @@ public readonly struct KeyUsage
     {
         StringBuilder sb = new();
         if (DigitalSignature)
+        {
             _ = sb.Append(nameof(DigitalSignature)).Append(", ");
+        }
+
         if (NonRepudiation)
+        {
             _ = sb.Append(nameof(NonRepudiation)).Append(", ");
+        }
+
         if (KeyEncipherment)
+        {
             _ = sb.Append(nameof(KeyEncipherment)).Append(", ");
+        }
+
         if (DataEncipherment)
+        {
             _ = sb.Append(nameof(DataEncipherment)).Append(", ");
+        }
+
         if (KeyAgreement)
+        {
             _ = sb.Append(nameof(KeyAgreement)).Append(", ");
+        }
+
         if (KeyCertSign)
+        {
             _ = sb.Append(nameof(KeyCertSign)).Append(", ");
+        }
+
         if (CRLSign)
+        {
             _ = sb.Append(nameof(CRLSign)).Append(", ");
+        }
+
         if (EncipherOnly)
+        {
             _ = sb.Append(nameof(EncipherOnly)).Append(", ");
+        }
+
         if (DecipherOnly)
+        {
             _ = sb.Append(nameof(DecipherOnly)).Append(", ");
+        }
 
         return sb.ToString().Trim([',', ' ']);
     }

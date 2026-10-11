@@ -23,9 +23,14 @@ internal struct PendingParent
     public void Add(ITag child)
     {
         if (ChildArray is not null)
+        {
             ChildArray[NextChildIndex++] = child;
+        }
         else
+        {
             ChildList!.Add(child);
+        }
+
         RemainingChildren--;
     }
 }

@@ -10,7 +10,10 @@ public class BooleanParsingStrategy : IContentParsingStrategy
     public string Parse(byte[] content)
     {
         if (content.Length != 1)
+        {
             return OctetStringParsingStrategy.ToHex(content);
+        }
+
         return content[0] != 0 ? "True" : "False";
     }
 

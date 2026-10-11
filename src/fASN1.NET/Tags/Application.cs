@@ -20,7 +20,10 @@ public class Application : TagBase
     public Application(int tagNumber, bool isConstructed, byte[]? content = null, List<ITag>? children = null) : base(content, children)
     {
         if (tagNumber < 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(tagNumber), tagNumber, "A tag number cannot be negative.");
+        }
+
         _tagNumber = tagNumber;
         _isConstructed = isConstructed;
     }

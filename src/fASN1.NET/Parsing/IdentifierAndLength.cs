@@ -67,7 +67,9 @@ internal static class IdentifierAndLengthReader
             return false;
         }
         if (!TryReadLength(ref source, encoding.IdentifierStart, out encoding.ContentsLength, out encoding.IsShortestDefiniteForm, out failure))
+        {
             return false;
+        }
 
         encoding.ContentsStart = source.Position;
         return true;
@@ -88,19 +90,29 @@ internal static class IdentifierAndLengthReader
         {
             octet = source.ReadByte();
             if (octet == -1)
+            {
                 return Fail(ParseFailureKind.IdentifierTruncated, identifierStart, out failure);
+            }
             // Bits 7–1 of the first subsequent octet must not all be zero (§8.1.2.4.2 c).
             if (number == 0 && octet == Ber.TAG_NUMBER_CONTINUATION_FLAG)
+            {
                 return Fail(ParseFailureKind.NonMinimalTagNumber, identifierStart, out failure);
+            }
+
             number = (number << 7) | (uint)(octet & ~Ber.TAG_NUMBER_CONTINUATION_FLAG);
             if (number > int.MaxValue)
+            {
                 return Fail(ParseFailureKind.TagNumberTooLarge, identifierStart, out failure);
+            }
         }
         while ((octet & Ber.TAG_NUMBER_CONTINUATION_FLAG) != 0);
 
         // Tag numbers 0 to 30 must use the single-octet form (§8.1.2.2).
         if (number < Ber.HIGH_TAG_NUMBER_FORM)
+        {
             return Fail(ParseFailureKind.NonMinimalTagNumber, identifierStart, out failure);
+        }
+
         tagNumber = (int)number;
         return true;
     }
@@ -119,7 +131,9 @@ internal static class IdentifierAndLengthReader
         failure = default;
         var first = source.ReadByte();
         if (first == -1)
+        {
             return Fail(ParseFailureKind.LengthTruncated, identifierStart, out failure);
+        }
 
         if ((first & Ber.LONG_FORM_FLAG) == 0)
         {
@@ -130,7 +144,10 @@ internal static class IdentifierAndLengthReader
 
         var octetCount = first & Ber.LENGTH_OCTET_COUNT_MASK;
         if (octetCount == 0)
+        {
             return true; // indefinite form (§8.1.3.6)
+        }
+
         if (octetCount > Ber.MAX_LENGTH_OCTETS)
         {
             failure = new ParseFailure(ParseFailureKind.TooManyLengthOctets, identifierStart, octetCount);
@@ -143,16 +160,24 @@ internal static class IdentifierAndLengthReader
         {
             var octet = source.ReadByte();
             if (octet == -1)
+            {
                 return Fail(ParseFailureKind.LengthTruncated, identifierStart, out failure);
+            }
+
             if (i == 0)
+            {
                 isShortestDefiniteForm = octet != 0; // a leading zero octet means fewer octets would do
+            }
+
             length = (length << 8) | (uint)octet;
         }
         isShortestDefiniteForm &= length >= 0x80; // shorter lengths must use the short form
 
         // Contents are read into a byte[], so lengths are limited to what an array can index.
         if (length > int.MaxValue)
+        {
             return Fail(ParseFailureKind.LengthTooLarge, identifierStart, out failure);
+        }
 
         contentsLength = length;
         return true;

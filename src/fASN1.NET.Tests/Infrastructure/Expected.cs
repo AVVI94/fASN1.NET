@@ -67,12 +67,16 @@ internal sealed record Expected(
         Check(path, nameof(Content), Convert.ToHexString(Content), Convert.ToHexString(actual.Content));
         Check(path, "Children.Count", Children.Length, actual.Children.Count);
         for (int i = 0; i < Children.Length; i++)
+        {
             Children[i].AssertMatches(actual.Children[i], $"{path}/{i}");
+        }
     }
 
     private static void Check<T>(string path, string property, T expected, T actual)
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        {
             throw new XunitException($"Mismatch at {path}, {property}:{Environment.NewLine}  expected: {expected}{Environment.NewLine}  actual:   {actual}");
+        }
     }
 }

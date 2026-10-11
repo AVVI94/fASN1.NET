@@ -25,13 +25,20 @@ internal ref partial struct StructureScanner<TSource>
     {
         // The length must be in the definite form, with the fewest octets (X.690 §10.1).
         if (!encoding.IsShortestDefiniteForm)
+        {
             return FailEncapsulation(ParseFailureKind.NonDerLengthInEncapsulation, encoding.IdentifierStart);
+        }
         // End-of-contents octets cannot stand for a value, so the contents are not a run of encodings.
         if (encoding.IsEndOfContentsOctets && enclosingKind == EnclosingEncodingKind.EncapsulatingOctetString)
+        {
             return FailEncapsulation(ParseFailureKind.EndOfContentsInEncapsulation, encoding.IdentifierStart);
+        }
         // DER encodes strings only in the primitive form (§10.2); Serialize writes a constructed string as one.
         if (Ber.FragmentTagNumber(encoding.IdentifierOctet) != 0)
+        {
             return FailEncapsulation(ParseFailureKind.ConstructedStringInEncapsulation, encoding.IdentifierStart);
+        }
+
         return true;
     }
 
@@ -42,9 +49,15 @@ internal ref partial struct StructureScanner<TSource>
     private bool CheckDerSetOrder(ref EnclosingEncoding set)
     {
         if (set.NestedEncodingCount == 0 || _nodes[set.NodeIndex].IdentifierOctet != Ber.SET)
+        {
             return true;
+        }
+
         if (CompareEncodings(set.PreviousNestedEncodingStart, set.NestedEncodingStart, set.NestedEncodingStart, _source.Position) <= 0)
+        {
             return true;
+        }
+
         return FailEncapsulation(ParseFailureKind.SetNotInDerOrderInEncapsulation, set.NestedEncodingStart);
     }
 
@@ -81,7 +94,9 @@ internal ref partial struct StructureScanner<TSource>
             for (long i = common; i < longerLength && result == 0; i++)
             {
                 if (_source.ReadByte() != 0)
+                {
                     result = sign;
+                }
             }
         }
         _source.Position = resume;

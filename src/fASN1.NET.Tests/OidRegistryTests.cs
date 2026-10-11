@@ -45,7 +45,9 @@ public class OidRegistryTests
                 _ = OID.GetOrCreate($"1.3.6.1.4.1.88888.{thread}.{i}");
                 _ = OID.GetOrCreate(OID.COMMON_NAME);
                 if (i % 500 == 0)
+                {
                     _ = OID.OidDictionary.Count(pair => pair.Key != pair.Value.Value);
+                }
             }
         });
 

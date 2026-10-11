@@ -192,7 +192,9 @@ public class SerializeStructureTests
         using (writer.PushSetOf())
         {
             foreach (var item in items)
+            {
                 writer.WriteEncodedValue(Asn1Serializer.Serialize(item));
+            }
         }
 
         var serialized = Asn1Serializer.Serialize(new Set([.. items]));

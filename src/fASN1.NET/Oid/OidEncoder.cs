@@ -46,25 +46,35 @@ public static class OidEncoder
     {
         value = null;
         if (oid is null || oid.Length == 0)
+        {
             return false;
+        }
 
         var text = new StringBuilder(oid.Length * 3);
         var pos = 0;
         while (pos < oid.Length)
         {
             if (!TryReadArc(oid, ref pos, out var small, out var big))
+            {
                 return false;
+            }
 
             if (text.Length == 0)
             {
                 // The first subidentifier packs the first two arcs as 40 * X + Y, where X is 0, 1 or 2 and Y is
                 // below 40 unless X is 2; so values from 80 up are all under arc 2 (X.690 §8.19.4).
                 if (big is null && small < 80)
+                {
                     text.Append(small / 40).Append('.').Append(small % 40);
+                }
                 else if (big is null)
+                {
                     text.Append("2.").Append(small - 80);
+                }
                 else
+                {
                     text.Append("2.").Append((big.Value - 80).ToString(CultureInfo.InvariantCulture));
+                }
             }
             else if (big is null)
             {
@@ -114,20 +124,28 @@ public static class OidEncoder
     {
         bytes = null;
         if (oid is null)
+        {
             return false;
+        }
 
         var arcs = oid.Split('.');
         if (arcs.Length < 2)
+        {
             return false;
+        }
 
         var values = new BigInteger[arcs.Length];
         for (int i = 0; i < arcs.Length; i++)
         {
             if (!TryParseArc(arcs[i], out values[i]))
+            {
                 return false;
+            }
         }
         if (values[0] > 2 || (values[0] < 2 && values[1] > 39))
+        {
             return false;
+        }
 
         var result = new List<byte>(arcs.Length * 2);
         WriteArc(result, (values[0] * 40) + values[1]);
@@ -146,21 +164,31 @@ public static class OidEncoder
         big = null;
         // A leading 0x80 adds nothing but a zero group, which X.690 §8.19.2 forbids.
         if (bytes[pos] == 0x80)
+        {
             return false;
+        }
 
         while (pos < bytes.Length)
         {
             var b = bytes[pos++];
             if (big is null && small > ulong.MaxValue >> 7)
+            {
                 big = small;
+            }
 
             if (big is null)
+            {
                 small = (small << 7) | (uint)(b & 0x7F);
+            }
             else
+            {
                 big = (big.Value << 7) | (b & 0x7F);
+            }
 
             if ((b & 0x80) == 0)
+            {
                 return true;
+            }
         }
         return false; // the last byte still had the continuation bit: the arc is unterminated
     }
@@ -169,11 +197,16 @@ public static class OidEncoder
     {
         value = default;
         if (text.Length == 0 || (text.Length > 1 && text[0] == '0'))
+        {
             return false;
+        }
+
         foreach (var c in text)
         {
             if (c is < '0' or > '9')
+            {
                 return false;
+            }
         }
         value = BigInteger.Parse(text, NumberStyles.None, CultureInfo.InvariantCulture);
         return true;

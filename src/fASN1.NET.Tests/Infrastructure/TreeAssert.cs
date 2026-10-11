@@ -57,7 +57,9 @@ internal static class TreeAssert
         {
             var difference = (i < a.Length ? a[i] : 0) - (i < b.Length ? b[i] : 0);
             if (difference != 0)
+            {
                 return difference;
+            }
         }
         return 0;
     }
@@ -70,9 +72,14 @@ internal static class TreeAssert
         foreach (var (tag, path) in Walk(root))
         {
             if (tag.Children.Count > 0 && tag.Content.Length != 0)
+            {
                 throw new XunitException($"{path}: node has both children and content");
+            }
+
             if (tag.Children.Any(c => c is null))
+            {
                 throw new XunitException($"{path}: null child");
+            }
         }
     }
 
@@ -85,7 +92,9 @@ internal static class TreeAssert
             var (t, p) = stack.Pop();
             yield return (t, p);
             for (int i = t.Children.Count - 1; i >= 0; i--)
+            {
                 stack.Push((t.Children[i], $"{p}/{i}"));
+            }
         }
     }
 
@@ -113,7 +122,9 @@ internal static class TreeAssert
     private static void Check<T>(string path, string property, T expected, T actual)
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        {
             throw Fail(path, property, expected, actual);
+        }
     }
 
     private static XunitException Fail(string path, string property, object? expected, object? actual)

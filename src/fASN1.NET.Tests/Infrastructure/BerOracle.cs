@@ -29,24 +29,36 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
 
         // Inside an OCTET STRING, a SET must also be in DER order (X.690 §11.6), which ReadSetOf checks.
         if (rules == AsnEncodingRules.DER && tagClass == 0 && isConstructed && number == 17)
+        {
             new AsnReader(src.Slice(0, consumed).ToArray(), AsnEncodingRules.DER).ReadSetOf();
+        }
 
         if (tagClass == 0 && isConstructed && IsStringType(number))
         {
             // DER has no constructed strings, so inside an OCTET STRING one makes the probe fail.
             if (rules == AsnEncodingRules.DER)
+            {
                 throw new AsnContentException("Constructed string in DER");
+            }
+
             var joined = Join(src.Slice(0, consumed), number);
             if (number == 4 && TryReadEncapsulated(joined, out var joinedChildren))
+            {
                 return new OracleNode(tagClass, false, number, [], joinedChildren);
+            }
+
             return new OracleNode(tagClass, false, number, joined, []);
         }
 
         if (isConstructed)
+        {
             return new OracleNode(tagClass, isConstructed, number, [], ReadAll(content, rules));
+        }
 
         if (tagClass == 0 && number == 4 && TryReadEncapsulated(content, out var encapsulated))
+        {
             return new OracleNode(tagClass, isConstructed, number, [], encapsulated);
+        }
 
         return new OracleNode(tagClass, isConstructed, number, content.ToArray(), []);
     }
@@ -141,13 +153,17 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
         Check(path, nameof(ITag.Content), Convert.ToHexString(Content), Convert.ToHexString(actual.Content));
         Check(path, "Children.Count", Children.Count, actual.Children.Count);
         for (int i = 0; i < Children.Count; i++)
+        {
             Children[i].AssertMatches(actual.Children[i], $"{path}/{i}");
+        }
     }
 
     private static void Check<T>(string path, string property, T expected, T actual)
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        {
             throw new XunitException($"Oracle mismatch at {path}, {property}:{Environment.NewLine}  expected: {expected}{Environment.NewLine}  actual:   {actual}");
+        }
     }
 }
 

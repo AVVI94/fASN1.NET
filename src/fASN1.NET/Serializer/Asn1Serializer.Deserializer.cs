@@ -77,7 +77,10 @@ public static partial class Asn1Serializer
     public static bool TryDeserialize(byte[] data, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? tag, [NotNullWhen(false)] out string? error)
     {
         if (data is null)
+        {
             throw new ArgumentNullException(nameof(data));
+        }
+
         var source = new ByteArraySource(data);
         return TryDeserializeCore(ref source, tagFactory, out tag, out error);
     }
@@ -142,7 +145,10 @@ public static partial class Asn1Serializer
     public static ITag Deserialize(byte[] data, ITagFactory tagFactory)
     {
         if (data is null)
+        {
             throw new ArgumentNullException(nameof(data));
+        }
+
         var source = new ByteArraySource(data);
         return DeserializeCore(ref source, tagFactory, nameof(data));
     }
@@ -170,7 +176,10 @@ public static partial class Asn1Serializer
     public static ITag Deserialize(Stream stream, ITagFactory tagFactory)
     {
         if (stream is null)
+        {
             throw new ArgumentException("Stream is null or empty.", nameof(stream));
+        }
+
         var source = new StreamSource(stream);
         return DeserializeCore(ref source, tagFactory, nameof(stream));
     }
@@ -200,7 +209,10 @@ public static partial class Asn1Serializer
         where TSource : struct, IByteSource
     {
         if (source.Length == 0)
+        {
             throw new ArgumentException("Stream is null or empty.", paramName);
+        }
+
         return Asn1Parser.TryParse(ref source, tagFactory, out var tag, out var error)
             ? tag
             : throw new Asn1DeserializationException(error);

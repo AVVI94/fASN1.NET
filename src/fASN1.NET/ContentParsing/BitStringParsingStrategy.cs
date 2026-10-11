@@ -11,10 +11,15 @@ public class BitStringParsingStrategy : IContentParsingStrategy
     internal static string ParseBitString(byte[] data)
     {
         if (data.Length == 0)
+        {
             return ""; // invalid: the unused-bits byte is missing
+        }
+
         var unusedBits = data[0];
         if (unusedBits > 7 || (data.Length == 1 && unusedBits != 0))
+        {
             return OctetStringParsingStrategy.ToHex(data); // invalid count of unused bits
+        }
 
         var sb = new StringBuilder((data.Length - 1) * 8 - unusedBits);
 

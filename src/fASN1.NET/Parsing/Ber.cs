@@ -59,7 +59,10 @@ internal static class Ber
     public static int FragmentTagNumber(int identifierOctet)
     {
         if ((identifierOctet & ~TAG_NUMBER_MASK) != CONSTRUCTED_FLAG)
+        {
             return 0; // not universal and constructed
+        }
+
         return (identifierOctet & TAG_NUMBER_MASK) switch
         {
             (int)Tag.BitString => (int)Tag.BitString,

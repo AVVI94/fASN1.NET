@@ -48,13 +48,18 @@ public static partial class Extensions
         {
             // ExtKeyUsageSyntax ::= SEQUENCE SIZE (1..MAX) OF KeyPurposeId (OBJECT IDENTIFIER)
             if (FindExtensionContent(certificateTag, _extKeyUsageSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } purposes)
+            {
                 return false;
+            }
 
             bool ekuFound = false;
             foreach (var e in purposes.Children)
             {
                 if (!e.Is(Tag.ObjectIdentifier))
+                {
                     continue;
+                }
+
                 ekuFound = true;
                 switch (OidEncoder.GetString(e.Content))
                 {
@@ -157,7 +162,9 @@ public static partial class Extensions
             {
                 var tag = pending.Pop();
                 if (tag.IsKeyUsageSequence() && TryReadKeyUsage(tag, out keyUsage))
+                {
                     return true;
+                }
 
                 for (int i = tag.Children.Count - 1; i >= 0; i--)
                 {
@@ -171,7 +178,10 @@ public static partial class Extensions
         {
             keyUsage = default;
             if (extension.GetKeyUsageBitStringTag() is not { } bits)
+            {
                 return false;
+            }
+
             keyUsage = KeyUsage.FromBitStringContent(bits.Content, extension.IsKeyUsageCritical());
             return true;
         }
@@ -189,7 +199,10 @@ public static partial class Extensions
         try
         {
             if (!IsV3Certificate(tag))
+            {
                 return false;
+            }
+
             serialNumber = TbsFields(tag)[1].ContentToString();
             return true;
         }
@@ -216,11 +229,16 @@ public static partial class Extensions
         {
             // GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
             if (FindExtensionContent(tag, _sanOidSequence) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } names)
+            {
                 return false;
+            }
+
             foreach (var name in names.Children)
             {
                 if (ReadGeneralName(name) is { } item)
+                {
                     san.Add(item);
+                }
             }
             return true;
         }
@@ -237,17 +255,29 @@ public static partial class Extensions
         static ISanItem? ReadGeneralName(ITag name)
         {
             if (name.TagClass != 2)
+            {
                 return null;
+            }
+
             switch (name.TagNumber)
             {
                 case 0:
                     // OtherName ::= SEQUENCE { type-id OBJECT IDENTIFIER, value [0] EXPLICIT ANY }
                     if (name.Children.Count != 2 || !name.Children[0].Is(Tag.ObjectIdentifier) || name.Children[1].Children.Count != 1)
+                    {
                         return null;
+                    }
+
                     if (name.Children[0].Content.SequenceEqual(_icaUserIdSequence))
+                    {
                         return new IcaUserId(name.Children[1]);
+                    }
+
                     if (name.Children[0].Content.SequenceEqual(_icaIkMpsvSequence))
+                    {
                         return new IcaIkMpsv(name.Children[1]);
+                    }
+
                     return new OtherName(OID.GetOrCreate(name.Children[0].Content), name.Children[1].Children[0]);
                 case 1:
                     return new Rfc822Name(IsoStringParsingStrategy.Default.Parse(name.Content));
@@ -286,10 +316,15 @@ public static partial class Extensions
         try
         {
             if (!IsV3Certificate(tag))
+            {
                 return false;
+            }
             // Validity ::= SEQUENCE { notBefore Time, notAfter Time }, Time ::= CHOICE { UTCTime, GeneralizedTime }
             if (!Asn1Time.TryParse(TbsFields(tag)[4].Children[1], out notAfter))
+            {
                 return false;
+            }
+
             return true;
         }
         catch
@@ -311,9 +346,15 @@ public static partial class Extensions
         try
         {
             if (!IsV3Certificate(tag))
+            {
                 return false;
+            }
+
             if (!Asn1Time.TryParse(TbsFields(tag)[4].Children[0], out notBefore))
+            {
                 return false;
+            }
+
             return true;
         }
         catch
@@ -362,7 +403,10 @@ public static partial class Extensions
         {
             // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] IMPLICIT OCTET STRING OPTIONAL, ... }
             if (FindExtensionContent(tag, _authorityKeyIdentifierOidSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.Sequence } aki)
+            {
                 return false;
+            }
+
             foreach (var field in aki.Children)
             {
                 if (field.TagClass == 2 && field.TagNumber == 0)
@@ -393,7 +437,10 @@ public static partial class Extensions
         {
             // SubjectKeyIdentifier ::= KeyIdentifier ::= OCTET STRING
             if (FindExtensionContent(tag, _subjectKeyIdentifierOidSequence, certificatesOnly: true) is not { TagClass: 0, TagNumber: (int)Tag.OctetString } keyId)
+            {
                 return false;
+            }
+
             subjectKeyIdentifier = OctetStringParsingStrategy.ToHex(GetRawContent(keyId));
             return true;
         }
@@ -437,7 +484,10 @@ public static partial class Extensions
         try
         {
             if (GetSubjectDirectoryAttributesRaw(tag) is not ITag sda)
+            {
                 return false;
+            }
+
             attrs = SubjectDirectory.SubjectDirectoryAttributes.FromTag(sda);
             return attrs is not null;
         }
@@ -536,7 +586,9 @@ public static partial class Extensions
         try
         {
             if (IsOidNullOrEmpty(oid) || !IsV3Certificate(tag))
+            {
                 return false;
+            }
             // tbsCertificate: issuer is field 3, subject field 5
             var name = TbsFields(tag)[forIssuer ? 3 : 5];
             return InternalExtensions.TryGetSubjectItem(name, OidEncoder.GetBytes(oid), out items);
@@ -573,7 +625,10 @@ public static partial class Extensions
         try
         {
             if (IsOidNullOrEmpty(oid) || !IsCertificationRequest(tag))
+            {
                 return false;
+            }
+
             return InternalExtensions.TryGetSubjectItem(RequestSubject(tag), OidEncoder.GetBytes(oid), out items);
         }
         catch

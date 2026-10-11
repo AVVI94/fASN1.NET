@@ -21,7 +21,10 @@ internal struct ByteArraySource(byte[] data) : IByteSource
     {
         var available = Math.Min(count, data.Length - _position);
         if (available <= 0)
+        {
             return 0;
+        }
+
         Buffer.BlockCopy(data, _position, buffer, offset, available);
         _position += available;
         return available;

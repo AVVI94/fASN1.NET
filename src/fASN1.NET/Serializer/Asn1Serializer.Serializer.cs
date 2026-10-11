@@ -74,7 +74,9 @@ public static partial class Asn1Serializer
         {
             encodingLengths[i] = checked(IdentifierOctetCount(tagNumbers[i]) + LengthOctetCount(contentsLengths[i]) + contentsLengths[i]);
             if (i > 0)
+            {
                 contentsLengths[parents[i]] = checked(contentsLengths[parents[i]] + encodingLengths[i]);
+            }
         }
 
         var result = new byte[encodingLengths[0]];
@@ -111,14 +113,22 @@ public static partial class Asn1Serializer
         for (int i = 1; i < identifierOctets.Count; i++)
         {
             if (identifierOctets[parents[i]] != SET)
+            {
                 continue;
+            }
+
             setChildren ??= [];
             if (!setChildren.TryGetValue(parents[i], out var children))
+            {
                 setChildren[parents[i]] = children = [];
+            }
+
             children.Add(i);
         }
         if (setChildren is null)
+        {
             return;
+        }
 
         var sets = new List<int>(setChildren.Keys);
         sets.Sort((a, b) => b.CompareTo(a));
@@ -131,10 +141,14 @@ public static partial class Asn1Serializer
             {
                 ranges[i] = (encodingStarts[children[i]], encodingLengths[children[i]]);
                 if (i > 0 && CompareEncodings(encoding, ranges[i - 1], ranges[i]) > 0)
+                {
                     isSorted = false;
+                }
             }
             if (isSorted)
+            {
                 continue;
+            }
 
             Array.Sort(ranges, (a, b) => CompareEncodings(encoding, a, b));
             var sorted = new byte[contentsLengths[set]];
@@ -159,14 +173,18 @@ public static partial class Asn1Serializer
         {
             var difference = octets[a.Start + i] - octets[b.Start + i];
             if (difference != 0)
+            {
                 return difference;
+            }
         }
         // The longer one is greater exactly when its remaining octets are not all padding zeros.
         var (longer, sign) = a.Length > b.Length ? (a, 1) : (b, -1);
         for (int i = common; i < longer.Length; i++)
         {
             if (octets[longer.Start + i] != 0)
+            {
                 return sign;
+            }
         }
         return 0;
     }
@@ -199,10 +217,16 @@ public static partial class Asn1Serializer
     private static int IdentifierOctetCount(int tagNumber)
     {
         if (tagNumber < TAG_NUMBER_MASK)
+        {
             return 1;
+        }
+
         var size = 2;
         while ((tagNumber >>= 7) != 0)
+        {
             size++;
+        }
+
         return size;
     }
 
@@ -357,12 +381,20 @@ public static partial class Asn1Serializer
     private static string ProcessContentString(string content, Asn1StringSerializerOptions options, string wrappedContentIndentation)
     {
         if (options.MaximumContentLineLength < 1)
+        {
             return content;
+        }
+
         if (content.Length <= options.MaximumContentLineLength)
+        {
             return content;
+        }
+
         if (options.ContentLengthHandling == ContentLengthHandling.Truncate)
+        {
             //return TruncateString(content, options.TruncateString, options.MaximumContentLineLength); - the bottom is faster lol
             return content.Substring(0, (int)options.MaximumContentLineLength - options.TruncateString.Length) + options.TruncateString;
+        }
 
         var s = options.ContentLengthHandling switch
         {
@@ -454,7 +486,10 @@ public static partial class Asn1Serializer
     {
         // Without this, an empty indentation still looped once per level, making deep trees quadratic.
         if (s.Length == 0 || n <= 0)
+        {
             return "";
+        }
+
         return M(s, n);
         //return n switch
         //{

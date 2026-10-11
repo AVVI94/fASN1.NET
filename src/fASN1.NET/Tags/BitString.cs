@@ -33,9 +33,15 @@ public class BitString : TagBase
     private static byte[]? WithUnusedBits(byte[]? content)
     {
         if (content is null)
+        {
             return null;
+        }
+
         if (content.Length == 0)
+        {
             return [0x00]; // no bits
+        }
+
         return [(byte)CalculateUnusedBits(content), .. content];
     }
 
@@ -49,7 +55,9 @@ public class BitString : TagBase
     {
         byte lastByte = bitStringBytes[bitStringBytes.Length - 1];
         if (lastByte == 0)
+        {
             return 0;
+        }
         // The lowest set bit ends the used bits; the zero bits below it are unused. This used to return 7 minus
         // that count, so 0x80 (one used bit) got no unused bits and 0x01 got seven.
         int unusedBits = 0;

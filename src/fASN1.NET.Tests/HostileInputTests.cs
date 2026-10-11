@@ -53,9 +53,14 @@ public class HostileInputTests
     {
         var data = new List<byte> { 0x30, 0x81, (byte)(PROBE_COUNT * 6) };
         for (int i = 0; i < PROBE_COUNT; i++)
+        {
             data.AddRange([0x04, 0x02, 0x30, 0x80]);
+        }
+
         for (int i = 0; i < PROBE_COUNT; i++)
+        {
             data.AddRange([0x00, 0x00]);
+        }
 
         var tag = ParseWithin(data.ToArray(), TimeSpan.FromSeconds(2));
 

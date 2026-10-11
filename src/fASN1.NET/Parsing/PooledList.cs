@@ -38,7 +38,10 @@ internal struct PooledList<T>
     public int Add(in T item)
     {
         if (Count == _items.Length)
+        {
             Grow();
+        }
+
         _items[Count] = item;
         return Count++;
     }
@@ -47,7 +50,10 @@ internal struct PooledList<T>
     {
         var item = _items[--Count];
         if (_clearOnRemove)
+        {
             _items[Count] = default!;
+        }
+
         return item;
     }
 
@@ -55,7 +61,10 @@ internal struct PooledList<T>
     public void Truncate(int count)
     {
         if (_clearOnRemove)
+        {
             Array.Clear(_items, count, Count - count);
+        }
+
         Count = count;
     }
 
@@ -64,7 +73,10 @@ internal struct PooledList<T>
     public void Dispose()
     {
         if (_items is null)
+        {
             return;
+        }
+
         ArrayPool<T>.Shared.Return(_items, _clearOnRemove);
         _items = null!;
         Count = 0;

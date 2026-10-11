@@ -34,11 +34,17 @@ public abstract class TagBase : ITag
     protected TagBase(byte[]? content = null, IList<ITag>? children = null)
     {
         if (children is null)
+        {
             _payload = content;
+        }
         else if (content is null || content.Length == 0)
+        {
             _payload = children;
+        }
         else
+        {
             _payload = new ExternalWithContent(children, content);
+        }
     }
 
     /// <inheritdoc/>
@@ -83,7 +89,9 @@ public abstract class TagBase : ITag
                     _ => new ChildList([], null),
                 };
                 if (ReferenceEquals(Interlocked.CompareExchange(ref _payload, created, payload), payload))
+                {
                     return created;
+                }
             }
         }
     }
@@ -110,17 +118,28 @@ public abstract class TagBase : ITag
                     break;
                 case ExternalWithContent external:
                     if (value.Length == 0)
+                    {
                         _payload = external.Children;
+                    }
                     else
+                    {
                         external.Content = value;
+                    }
+
                     break;
                 case ITag[] parsed:
                     if (value.Length != 0)
+                    {
                         _payload = new ChildList(parsed, value);
+                    }
+
                     break;
                 case IList<ITag> supplied:
                     if (value.Length != 0)
+                    {
                         _payload = new ExternalWithContent(supplied, value);
+                    }
+
                     break;
             }
         }
