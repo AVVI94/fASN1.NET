@@ -214,13 +214,6 @@ public class IPAddress : ISanItem
         };
     }
 
-    private static byte[] Half(byte[] bytes, int index)
-    {
-        var half = new byte[bytes.Length / 2];
-        System.Array.Copy(bytes, index * half.Length, half, 0, half.Length);
-        return half;
-    }
-
     public SanItemKind Kind => SanItemKind.IPAddress;
 
     /// <summary>The address in text form, such as <c>192.0.2.1</c> or <c>2001:db8::1</c>; hexadecimal for an invalid length.</summary>
@@ -228,6 +221,13 @@ public class IPAddress : ISanItem
 
     /// <summary>The address bytes as encoded; empty when the item was created from text.</summary>
     public byte[] Bytes { get; }
+
+    private static byte[] Half(byte[] bytes, int index)
+    {
+        var half = new byte[bytes.Length / 2];
+        System.Array.Copy(bytes, index * half.Length, half, 0, half.Length);
+        return half;
+    }
 }
 /// <summary>
 /// RegisteredID SAN Item

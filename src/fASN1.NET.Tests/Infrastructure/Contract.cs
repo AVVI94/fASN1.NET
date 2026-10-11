@@ -54,7 +54,9 @@ internal static class Contract
 
         // Same input behind a few junk bytes, read through the stream overload.
         var prefixed = new byte[data.Length + 3];
-        prefixed[0] = 0xFF; prefixed[1] = 0x30; prefixed[2] = 0x80;
+        prefixed[0] = 0xFF; 
+        prefixed[1] = 0x30; 
+        prefixed[2] = 0x80;
         data.CopyTo(prefixed, 3);
         using (var ms = new MemoryStream(prefixed) { Position = 3 })
         {

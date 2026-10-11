@@ -10,15 +10,6 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class ConstructedStringTests
 {
-    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
-
-    private static ITag Parse(string hex)
-    {
-        var (tag, error) = Contract.Check(H(hex));
-        Assert.True(tag is not null, error);
-        return tag!;
-    }
-
     [Theory]
     [InlineData("24 06 04 01 41 04 01 42")]                // definite length
     [InlineData("24 80 04 01 41 04 01 42 00 00")]          // indefinite length
@@ -105,5 +96,14 @@ public class ConstructedStringTests
         Assert.True(xml.Content.Length > 1000);
         Assert.Empty(xml.Children);
         Assert.DoesNotContain(TreeAssert.Walk(tag), n => n.Tag is Unknown);
+    }
+
+    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
+
+    private static ITag Parse(string hex)
+    {
+        var (tag, error) = Contract.Check(H(hex));
+        Assert.True(tag is not null, error);
+        return tag!;
     }
 }

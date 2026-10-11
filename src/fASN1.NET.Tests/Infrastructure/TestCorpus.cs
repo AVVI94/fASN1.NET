@@ -18,6 +18,9 @@ internal static class TestCorpus
     private static readonly string _root = Path.Combine(AppContext.BaseDirectory, "TestData");
     private static readonly Lazy<IReadOnlyDictionary<string, byte[]>> _all = new(Build);
 
+    private static readonly DateTimeOffset _notBefore = new(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
+    private static readonly DateTimeOffset _notAfter = new(2051, 6, 7, 8, 9, 10, TimeSpan.Zero); // GeneralizedTime range
+
     public static IReadOnlyDictionary<string, byte[]> All => _all.Value;
 
     /// <summary>Names of every sample, for <c>[MemberData]</c>.</summary>
@@ -64,9 +67,6 @@ internal static class TestCorpus
         ec.ImportPkcs8PrivateKey(Convert.FromBase64String(File.ReadAllText(Path.Combine(_root, "keys", "ecp256.pkcs8.b64"))), out _);
         return ec;
     }
-
-    private static readonly DateTimeOffset _notBefore = new(2025, 1, 2, 3, 4, 5, TimeSpan.Zero);
-    private static readonly DateTimeOffset _notAfter = new(2051, 6, 7, 8, 9, 10, TimeSpan.Zero); // GeneralizedTime range
 
     private static IEnumerable<(string, byte[])> Generated()
     {

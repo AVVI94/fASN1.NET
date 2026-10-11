@@ -20,6 +20,16 @@ public class ValueEncodingTests
             BigInteger.Parse("123456789012345678901234567890"), BigInteger.Parse("-123456789012345678901234567890"),
         }.Select(v => new object[] { v.ToString(CultureInfo.InvariantCulture) });
 
+    public static IEnumerable<object[]> UtcTimes => new[]
+    {
+        new object[] { "2024-02-29T23:59:58Z", "240229235958Z" },
+        new object[] { "1999-12-31T00:00:00Z", "991231000000Z" },
+        new object[] { "2000-01-01T00:00:00Z", "000101000000Z" },
+        new object[] { "1950-01-01T00:00:00Z", "500101000000Z" },
+        new object[] { "1969-07-20T20:17:40Z", "690720201740Z" },
+        new object[] { "2049-12-31T23:59:59Z", "491231235959Z" },
+    };
+
     [Theory]
     [MemberData(nameof(Integers))]
     public void Integer_MatchesDerEncoding(string decimalValue)
@@ -45,16 +55,6 @@ public class ValueEncodingTests
         Assert.Equal([0xFF], new Integer(-1).Content);
         Assert.Equal([0x00], new Integer(0).Content);
     }
-
-    public static IEnumerable<object[]> UtcTimes => new[]
-    {
-        new object[] { "2024-02-29T23:59:58Z", "240229235958Z" },
-        new object[] { "1999-12-31T00:00:00Z", "991231000000Z" },
-        new object[] { "2000-01-01T00:00:00Z", "000101000000Z" },
-        new object[] { "1950-01-01T00:00:00Z", "500101000000Z" },
-        new object[] { "1969-07-20T20:17:40Z", "690720201740Z" },
-        new object[] { "2049-12-31T23:59:59Z", "491231235959Z" },
-    };
 
     [Theory]
     [MemberData(nameof(UtcTimes))]

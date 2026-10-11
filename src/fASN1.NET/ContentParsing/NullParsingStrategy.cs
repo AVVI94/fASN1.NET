@@ -2,9 +2,10 @@
 
 internal class NullParsingStrategy : IContentParsingStrategy
 {
+    public static NullParsingStrategy Default { get; internal set; } = new();
+
     public string Parse(byte[] content)
     {
         return "";
     }
-    public static NullParsingStrategy Default { get; internal set; } = new();
 }

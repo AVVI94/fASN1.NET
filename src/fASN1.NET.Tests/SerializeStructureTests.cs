@@ -9,8 +9,6 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class SerializeStructureTests
 {
-    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
-
     [Theory]
     [InlineData(0, "00")]
     [InlineData(127, "7F")]
@@ -222,4 +220,6 @@ public class SerializeStructureTests
 
         Assert.Equal(2, Assert.IsType<Set>(Assert.Single(parsed.Children)).Children.Count);
     }
+
+    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
 }

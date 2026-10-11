@@ -7,13 +7,13 @@ namespace fASN1.NET.ContentParsing;
 /// </summary>
 public class BmpStringParsingStrategy : IContentParsingStrategy
 {
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+
+    public static BmpStringParsingStrategy Default { get; } = new BmpStringParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
         return Encoding.BigEndianUnicode.GetString(content);
     }
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-
-    public static BmpStringParsingStrategy Default { get; } = new BmpStringParsingStrategy();
 }

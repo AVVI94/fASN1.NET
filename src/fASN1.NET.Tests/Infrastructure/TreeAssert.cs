@@ -44,26 +44,6 @@ internal static class TreeAssert
         }
     }
 
-    /// <summary>The children ordered as X.690 §11.6 orders SET OF components: by encoding, the shorter padded with zeros.</summary>
-    private static IList<ITag> InDerOrder(IList<ITag> children)
-        => children.Select(c => (Tag: c, Encoding: Asn1Serializer.Serialize(c)))
-                   .OrderBy(c => c.Encoding, Comparer<byte[]>.Create(ComparePadded))
-                   .Select(c => c.Tag)
-                   .ToList();
-
-    private static int ComparePadded(byte[] a, byte[] b)
-    {
-        for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
-        {
-            var difference = (i < a.Length ? a[i] : 0) - (i < b.Length ? b[i] : 0);
-            if (difference != 0)
-            {
-                return difference;
-            }
-        }
-        return 0;
-    }
-
     /// <summary>
     /// Asserts the invariants every parsed tree must satisfy regardless of input.
     /// </summary>
@@ -117,6 +97,26 @@ internal static class TreeAssert
               .AppendLine();
         }
         return sb.ToString();
+    }
+
+    /// <summary>The children ordered as X.690 §11.6 orders SET OF components: by encoding, the shorter padded with zeros.</summary>
+    private static IList<ITag> InDerOrder(IList<ITag> children)
+        => children.Select(c => (Tag: c, Encoding: Asn1Serializer.Serialize(c)))
+                   .OrderBy(c => c.Encoding, Comparer<byte[]>.Create(ComparePadded))
+                   .Select(c => c.Tag)
+                   .ToList();
+
+    private static int ComparePadded(byte[] a, byte[] b)
+    {
+        for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
+        {
+            var difference = (i < a.Length ? a[i] : 0) - (i < b.Length ? b[i] : 0);
+            if (difference != 0)
+            {
+                return difference;
+            }
+        }
+        return 0;
     }
 
     private static void Check<T>(string path, string property, T expected, T actual)

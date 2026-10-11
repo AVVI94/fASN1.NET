@@ -15,6 +15,9 @@ public class OctetStringParsingStrategy : IContentParsingStrategy
 {
     private static readonly UTF8Encoding _strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    public static OctetStringParsingStrategy Default { get; } = new OctetStringParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
@@ -41,7 +44,4 @@ public class OctetStringParsingStrategy : IContentParsingStrategy
 
     /// <summary>The bytes as uppercase hexadecimal with no separators.</summary>
     internal static string ToHex(byte[] content) => BitConverter.ToString(content).Replace("-", "");
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-    public static OctetStringParsingStrategy Default { get; } = new OctetStringParsingStrategy();
 }

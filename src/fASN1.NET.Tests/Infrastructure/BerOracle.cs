@@ -18,7 +18,17 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// </remarks>
 internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumber, byte[] Content, List<OracleNode> Children)
 {
+    public bool IsEoc => TagClass == 0 && !IsConstructed && TagNumber == 0;
+
     public static OracleNode Decode(ReadOnlySpan<byte> data) => ReadElement(data, AsnEncodingRules.BER, out _);
+
+    public int CountNodes() => 1 + Children.Sum(c => c.CountNodes());
+
+    /// <summary>
+    /// Compares the parsed tree against this oracle node: tag identity, CLR type, class,
+    /// constructed flag, content bytes and the complete ordered list of children.
+    /// </summary>
+    public void AssertMatches(ITag actual) => AssertMatches(actual, "root");
 
     private static OracleNode ReadElement(ReadOnlySpan<byte> src, AsnEncodingRules rules, out int consumed)
     {
@@ -130,16 +140,6 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
         }
     }
 
-    public bool IsEoc => TagClass == 0 && !IsConstructed && TagNumber == 0;
-
-    public int CountNodes() => 1 + Children.Sum(c => c.CountNodes());
-
-    /// <summary>
-    /// Compares the parsed tree against this oracle node: tag identity, CLR type, class,
-    /// constructed flag, content bytes and the complete ordered list of children.
-    /// </summary>
-    public void AssertMatches(ITag actual) => AssertMatches(actual, "root");
-
     private void AssertMatches(ITag actual, string path)
     {
         Check(path, "type", TagIdentity.ExpectedType(TagClass, IsConstructed, TagNumber), actual.GetType());
@@ -212,10 +212,6 @@ internal static class TagIdentity
 
     public static int ExpectedTagNumber(int id) => id & 0x1F;
 
-    /// <summary>The single identifier byte of a tag number below 31, or -1 for the multi-byte form.</summary>
-    private static int LowFormIdentifier(int tagClass, bool isConstructed, int number)
-        => number < 31 ? (tagClass << 6) | (isConstructed ? 0x20 : 0) | number : -1;
-
     public static Type ExpectedType(int tagClass, bool isConstructed, int number) => tagClass switch
     {
         0 => _universal.TryGetValue(LowFormIdentifier(tagClass, isConstructed, number), out var u) ? u.Type : typeof(Unknown),
@@ -238,4 +234,8 @@ internal static class TagIdentity
         2 => $"[{number}]",
         _ => $"Private_{number}",
     };
+
+    /// <summary>The single identifier byte of a tag number below 31, or -1 for the multi-byte form.</summary>
+    private static int LowFormIdentifier(int tagClass, bool isConstructed, int number)
+        => number < 31 ? (tagClass << 6) | (isConstructed ? 0x20 : 0) | number : -1;
 }

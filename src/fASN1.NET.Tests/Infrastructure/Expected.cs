@@ -44,6 +44,8 @@ internal sealed record Expected(
     public static Expected CtxWith(int identifier, params Expected[] children)
         => new(ContextType(identifier), identifier & 0x1F, $"[{identifier & 0x1F}]", 2, true, false, false, [], children);
 
+    public void AssertMatches(ITag actual) => AssertMatches(actual, "root");
+
     static Type ContextType(int identifier) => (identifier & 0x1F) switch
     {
         0 => typeof(ContextSpecific_0),
@@ -52,8 +54,6 @@ internal sealed record Expected(
         3 => typeof(ContextSpecific_3),
         _ => typeof(ContextSpecificTag),
     };
-
-    public void AssertMatches(ITag actual) => AssertMatches(actual, "root");
 
     private void AssertMatches(ITag actual, string path)
     {

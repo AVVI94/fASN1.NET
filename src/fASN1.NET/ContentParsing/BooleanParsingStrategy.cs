@@ -6,6 +6,9 @@
 /// </summary>
 public class BooleanParsingStrategy : IContentParsingStrategy
 {
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    public static BooleanParsingStrategy Default { get; } = new BooleanParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
@@ -16,7 +19,4 @@ public class BooleanParsingStrategy : IContentParsingStrategy
 
         return content[0] != 0 ? "True" : "False";
     }
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-    public static BooleanParsingStrategy Default { get; } = new BooleanParsingStrategy();
 }

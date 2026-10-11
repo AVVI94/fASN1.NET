@@ -12,6 +12,9 @@ namespace fASN1.NET.ContentParsing;
 /// </summary>
 public class UtcTimeParsingStrategy : IContentParsingStrategy
 {
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    public static UtcTimeParsingStrategy Default { get; } = new UtcTimeParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
         => Asn1Time.TryParseUtcTime(content, out var value)
@@ -26,7 +29,4 @@ public class UtcTimeParsingStrategy : IContentParsingStrategy
     /// <returns>The text.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The year in UTC is outside 1950–2049.</exception>
     public string Reverse(DateTime dateTime) => UTCTime.Format(dateTime);
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-    public static UtcTimeParsingStrategy Default { get; } = new UtcTimeParsingStrategy();
 }

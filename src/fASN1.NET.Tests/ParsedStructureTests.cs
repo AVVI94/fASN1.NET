@@ -12,28 +12,6 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class ParsedStructureTests
 {
-    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
-
-    private static ITag Parse(string hex) => Parse(H(hex));
-
-    private static ITag Parse(byte[] data)
-    {
-        var (tag, error) = Contract.Check(data);
-        Assert.True(tag is not null, error);
-        return tag!;
-    }
-
-    private static void AssertTree(string hex, Expected expected) => expected.AssertMatches(Parse(hex));
-
-    private static void AssertFails(string hex, string? expectedError)
-    {
-        var (tag, error) = Contract.Check(H(hex));
-        Assert.Null(tag);
-        Assert.Equal(expectedError, error);
-    }
-
-    #region Tag identity
-
     public static IEnumerable<object[]> PrimitiveUniversalIdentifiers =>
         TagIdentity.KnownUniversalIdentifiers.Where(id => id is not (0x30 or 0x31 or 0x2B)).Select(id => new object[] { id });
 
@@ -124,10 +102,6 @@ public class ParsedStructureTests
         AssertTree("E4 03 02 01 05", new Expected(typeof(Private), 4, "Private_4", 3, true, false, false, [], [Int("05")]));
     }
 
-    #endregion
-
-    #region Lengths
-
     [Fact]
     public void ZeroLength_Nodes()
     {
@@ -202,10 +176,6 @@ public class ParsedStructureTests
         return [(byte)(0x80 | bytes.Length), .. bytes];
     }
 
-    #endregion
-
-    #region Definite-length nesting
-
     [Fact]
     public void DeepDefiniteNesting_KeepsEveryLevel()
     {
@@ -236,10 +206,6 @@ public class ParsedStructureTests
     {
         AssertTree("30 05 00 00 02 01 05", Seq(Eoc(), Int("05")));
     }
-
-    #endregion
-
-    #region Indefinite length
 
     [Fact]
     public void Indefinite_Sequence()
@@ -321,10 +287,6 @@ public class ParsedStructureTests
         AssertTree("30 80 A0 80 00 00 00 00", Seq(new Expected(typeof(ContextSpecific_0), 0, "[0]", 2, true, false, false, [], [])));
     }
 
-    #endregion
-
-    #region OCTET STRING encapsulation probe
-
     [Fact]
     public void Probe_SingleChild() => AssertTree("04 03 02 01 05", OctetsWith(Int("05")));
 
@@ -374,10 +336,6 @@ public class ParsedStructureTests
         AssertTree("0C 03 02 01 05", Utf8("020105"));
     }
 
-    #endregion
-
-    #region BIT STRING
-
     [Theory]
     [InlineData("03 02 07 80", "0780")]
     [InlineData("03 01 00", "00")]
@@ -387,10 +345,6 @@ public class ParsedStructureTests
     {
         AssertTree(hex, Bits(content));
     }
-
-    #endregion
-
-    #region Errors
 
     [Fact]
     public void Empty_Fails() => AssertFails("", "Stream is null or empty.");
@@ -462,10 +416,6 @@ public class ParsedStructureTests
         Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(Array.Empty<byte>()));
     }
 
-    #endregion
-
-    #region Input handling
-
     [Fact]
     public void TrailingBytesAfterRoot_AreIgnored()
     {
@@ -502,12 +452,6 @@ public class ParsedStructureTests
         TreeAssert.Equal(Asn1Serializer.Deserialize(data), Asn1Serializer.Deserialize(stream));
     }
 
-    /// <summary>A seekable stream that never returns more than one byte from <see cref="Stream.Read(byte[], int, int)"/>.</summary>
-    private sealed class OneBytePerReadStream(byte[] data) : MemoryStream(data)
-    {
-        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
-    }
-
     [Fact]
     public void CustomFactory_BuildsEveryNodeOfTheTree()
     {
@@ -518,6 +462,43 @@ public class ParsedStructureTests
         var nodes = TreeAssert.Walk(tag).Select(n => n.Tag).ToList();
         Assert.Equal(6, nodes.Count);
         Assert.All(nodes, node => Assert.Contains(node, factory.Created));
+    }
+
+    [Fact]
+    public void FactoryException_TryDeserializeReportsIt_DeserializeThrows()
+    {
+        var data = H("30 06 02 01 05 02 01 07");
+
+        Assert.False(Asn1Serializer.TryDeserialize(data, new Contract.ThrowingFactory(2), out var tag, out var error));
+        Assert.Null(tag);
+        Assert.False(string.IsNullOrEmpty(error));
+        Assert.ThrowsAny<Exception>(() => Asn1Serializer.Deserialize(data, new Contract.ThrowingFactory(2)));
+    }
+
+    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
+
+    private static ITag Parse(string hex) => Parse(H(hex));
+
+    private static ITag Parse(byte[] data)
+    {
+        var (tag, error) = Contract.Check(data);
+        Assert.True(tag is not null, error);
+        return tag!;
+    }
+
+    private static void AssertTree(string hex, Expected expected) => expected.AssertMatches(Parse(hex));
+
+    private static void AssertFails(string hex, string? expectedError)
+    {
+        var (tag, error) = Contract.Check(H(hex));
+        Assert.Null(tag);
+        Assert.Equal(expectedError, error);
+    }
+
+    /// <summary>A seekable stream that never returns more than one byte from <see cref="Stream.Read(byte[], int, int)"/>.</summary>
+    private sealed class OneBytePerReadStream(byte[] data) : MemoryStream(data)
+    {
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
     }
 
     private sealed class InstanceTrackingFactory : Factory.ITagFactory
@@ -534,16 +515,4 @@ public class ParsedStructureTests
         }
     }
 
-    [Fact]
-    public void FactoryException_TryDeserializeReportsIt_DeserializeThrows()
-    {
-        var data = H("30 06 02 01 05 02 01 07");
-
-        Assert.False(Asn1Serializer.TryDeserialize(data, new Contract.ThrowingFactory(2), out var tag, out var error));
-        Assert.Null(tag);
-        Assert.False(string.IsNullOrEmpty(error));
-        Assert.ThrowsAny<Exception>(() => Asn1Serializer.Deserialize(data, new Contract.ThrowingFactory(2)));
-    }
-
-    #endregion
 }

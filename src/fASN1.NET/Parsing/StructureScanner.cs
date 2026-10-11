@@ -24,28 +24,24 @@ namespace fASN1.NET.Parsing;
 /// constructed encoding, whose fragments are joined (<c>StructureScanner.ConstructedStrings.cs</c>).
 /// </para>
 /// </remarks>
-internal ref partial struct StructureScanner<TSource>
+/// <param name="source">The input, positioned at the encoding to scan. The scanner reads a copy.</param>
+internal ref partial struct StructureScanner<TSource>(TSource source)
     where TSource : struct, IByteSource
 {
     private const int INITIAL_ENCLOSING_CAPACITY = 16;
     private const int INITIAL_NODE_CAPACITY = 128;
     private const int INITIAL_FRAGMENT_CAPACITY = 16;
 
-    private TSource _source;
-    private PooledList<EnclosingEncoding> _enclosing;
-    private PooledList<ScannedNode> _nodes;
-    private PooledList<ContentsFragment> _fragments;
-    private ParseFailure _failure;
+    private TSource _source = source;
+    private PooledList<EnclosingEncoding> _enclosing = new(INITIAL_ENCLOSING_CAPACITY, clearOnRemove: false);
+    private PooledList<ScannedNode> _nodes = new(INITIAL_NODE_CAPACITY, clearOnRemove: false);
+    private PooledList<ContentsFragment> _fragments = new(INITIAL_FRAGMENT_CAPACITY, clearOnRemove: false);
+    private ParseFailure _failure = default;
 
-    /// <param name="source">The input, positioned at the encoding to scan. The scanner reads a copy.</param>
-    public StructureScanner(TSource source)
-    {
-        _source = source;
-        _enclosing = new PooledList<EnclosingEncoding>(INITIAL_ENCLOSING_CAPACITY, clearOnRemove: false);
-        _nodes = new PooledList<ScannedNode>(INITIAL_NODE_CAPACITY, clearOnRemove: false);
-        _fragments = new PooledList<ContentsFragment>(INITIAL_FRAGMENT_CAPACITY, clearOnRemove: false);
-        _failure = default;
-    }
+    /// <summary>Offset the encoding being scanned may not cross; see <see cref="EnclosingEncoding.ContentsBound"/>.</summary>
+    private readonly long CurrentContentsBound => _enclosing.Count > 0 ? _enclosing.Last.ContentsBound : _source.Length;
+
+    private readonly long CurrentContentsBoundStart => _enclosing.Count > 0 ? _enclosing.Last.ContentsBoundStart : 0;
 
     /// <summary>The nodes of the final tree in pre-order, once <see cref="TryScan"/> has succeeded.</summary>
     public readonly ReadOnlySpan<ScannedNode> Nodes => _nodes.AsSpan();
@@ -182,8 +178,7 @@ internal ref partial struct StructureScanner<TSource>
 
         enclosing.ContentsBound = enclosing.IsIndefiniteForm ? CurrentContentsBound : enclosing.ContentsEnd;
         enclosing.ContentsBoundStart = enclosing.IsIndefiniteForm ? CurrentContentsBoundStart : enclosing.ContentsStart;
-        enclosing.MustBeDer = enclosing.Kind == EnclosingEncodingKind.EncapsulatingOctetString
-            || (_enclosing.Count > 0 && _enclosing.Last.MustBeDer);
+        enclosing.MustBeDer = enclosing.Kind == EnclosingEncodingKind.EncapsulatingOctetString || (_enclosing.Count > 0 && _enclosing.Last.MustBeDer);
         _enclosing.Add(enclosing);
         return ScanResult.ContentsEntered;
     }
@@ -228,20 +223,14 @@ internal ref partial struct StructureScanner<TSource>
     /// invalid with them; an OCTET STRING whose contents are not a complete run of encodings becomes a leaf with its
     /// raw contents.
     /// </summary>
-    private ScanResult LeaveContents(in EnclosingEncoding enclosing, bool nestedEncodingsValid)
+    private ScanResult LeaveContents(in EnclosingEncoding enclosing, bool nestedEncodingsValid) => enclosing.Kind switch
     {
-        switch (enclosing.Kind)
-        {
-            case EnclosingEncodingKind.Constructed:
-                return nestedEncodingsValid ? KeepNestedEncodings(enclosing) : ScanResult.Failed;
-            case EnclosingEncodingKind.EncapsulatingOctetString:
-                return nestedEncodingsValid ? KeepNestedEncodings(enclosing) : RejectEncapsulation(enclosing);
-            case EnclosingEncodingKind.ConstructedString:
-                return nestedEncodingsValid ? JoinFragments(enclosing) : ScanResult.Failed;
-            default: // a constructed fragment: its fragments already belong to its string
-                return nestedEncodingsValid ? ScanResult.Succeeded : ScanResult.Failed;
-        }
-    }
+        EnclosingEncodingKind.Constructed => nestedEncodingsValid ? KeepNestedEncodings(enclosing) : ScanResult.Failed,
+        EnclosingEncodingKind.EncapsulatingOctetString => nestedEncodingsValid ? KeepNestedEncodings(enclosing) : RejectEncapsulation(enclosing),
+        EnclosingEncodingKind.ConstructedString => nestedEncodingsValid ? JoinFragments(enclosing) : ScanResult.Failed,
+        // a constructed fragment: its fragments already belong to its string
+        _ => nestedEncodingsValid ? ScanResult.Succeeded : ScanResult.Failed,
+    };
 
     /// <summary>The nested encodings become the node's children.</summary>
     private ScanResult KeepNestedEncodings(in EnclosingEncoding enclosing)
@@ -273,11 +262,6 @@ internal ref partial struct StructureScanner<TSource>
         _source.Position += length;
         return ScanResult.Succeeded;
     }
-
-    /// <summary>Offset the encoding being scanned may not cross; see <see cref="EnclosingEncoding.ContentsBound"/>.</summary>
-    private readonly long CurrentContentsBound => _enclosing.Count > 0 ? _enclosing.Last.ContentsBound : _source.Length;
-
-    private readonly long CurrentContentsBoundStart => _enclosing.Count > 0 ? _enclosing.Last.ContentsBoundStart : 0;
 
     /// <summary>The encoding being scanned crosses the end of the contents of a definite-form encoding enclosing it.</summary>
     private readonly ParseFailure CrossingContentsBoundFailure() => new(ParseFailureKind.ContentsLengthMismatch, CurrentContentsBoundStart);

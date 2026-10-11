@@ -8,6 +8,10 @@ namespace fASN1.NET.ContentParsing;
 /// </summary>
 public class IntegerParsingStrategy : IContentParsingStrategy
 {
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+
+    public static IntegerParsingStrategy Default { get; } = new IntegerParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
@@ -19,8 +23,4 @@ public class IntegerParsingStrategy : IContentParsingStrategy
         return BigInteger.Parse(BitConverter.ToString(content).Replace("-", ""), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture)
                          .ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-
-    public static IntegerParsingStrategy Default { get; } = new IntegerParsingStrategy();
 }

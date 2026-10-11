@@ -12,8 +12,6 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class BerTests
 {
-    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
-
     public static TheoryData<string, string> ValidBer => new()
     {
         // §8.1.2 identifiers
@@ -84,27 +82,6 @@ public class BerTests
         { "a mix", "30 80 A0 80 24 80 04 01 41 04 01 42 00 00 31 80 02 01 09 02 01 01 00 00 00 00 BF 28 81 03 02 01 05 01 01 01 00 00" },
     };
 
-    [Theory]
-    [MemberData(nameof(ValidBer))]
-    public void ValidBer_MatchesDotNetNodeForNode(string _, string hex)
-    {
-        var data = H(hex);
-
-        var (tag, error) = Contract.Check(data);
-
-        Assert.True(tag is not null, error);
-        OracleNode.Decode(data).AssertMatches(tag!);
-    }
-
-    [Theory]
-    [MemberData(nameof(ValidBer))]
-    public void ValidBer_SerializesWithDerStructure(string _, string hex)
-    {
-        var tag = Asn1Serializer.Deserialize(H(hex));
-
-        AssertDerStructure(Asn1Serializer.Serialize(tag));
-    }
-
     public static TheoryData<string, string, string> InvalidBer => new()
     {
         { "missing end-of-contents", "30 80 02 01 05", "The contents in the indefinite form at offset 2 have no end-of-contents octets" },
@@ -127,6 +104,27 @@ public class BerTests
         { "empty BIT STRING fragment", "23 02 03 00", "The BIT STRING fragment at offset 2 has an invalid number of unused bits; only the last fragment may have unused bits" },
         { "constructed string without its end", "24 80 04 01 41", "The contents in the indefinite form at offset 2 have no end-of-contents octets" },
     };
+
+    [Theory]
+    [MemberData(nameof(ValidBer))]
+    public void ValidBer_MatchesDotNetNodeForNode(string _, string hex)
+    {
+        var data = H(hex);
+
+        var (tag, error) = Contract.Check(data);
+
+        Assert.True(tag is not null, error);
+        OracleNode.Decode(data).AssertMatches(tag!);
+    }
+
+    [Theory]
+    [MemberData(nameof(ValidBer))]
+    public void ValidBer_SerializesWithDerStructure(string _, string hex)
+    {
+        var tag = Asn1Serializer.Deserialize(H(hex));
+
+        AssertDerStructure(Asn1Serializer.Serialize(tag));
+    }
 
     [Theory]
     [MemberData(nameof(InvalidBer))]
@@ -209,6 +207,8 @@ public class BerTests
         TreeAssert.Equal(Asn1Serializer.Deserialize(data), fromStream);
         Assert.Equal(1 + data.Length, stream.Position); // left just after the element
     }
+
+    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
 
     /// <summary>
     /// Checks what DER requires of the structure: definite, minimal lengths, no constructed strings, and SET

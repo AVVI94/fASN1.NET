@@ -48,6 +48,8 @@ public class OID
     public const string GENDER = "1.3.6.1.5.5.7.9.3";
     public const string PLACE_OF_BIRTH = "1.3.6.1.5.5.7.9.2";
     public const string DATE_OF_BIRTH = "1.3.6.1.5.5.7.9.1";
+
+    private byte[]? _byteValue;
 #pragma warning restore CS1591 // Missing XML comment for publicly visible type or member
 
 
@@ -82,6 +84,8 @@ public class OID
         Comment = comment;
     }
 
+    private string DebuggerDisplay => $"\"{Value}\"" + (string.IsNullOrEmpty(FriendlyName) ? "" : $" ({FriendlyName})");
+
     /// <summary>
     /// OID value, for example "2.5.29.29"
     /// </summary>
@@ -94,8 +98,6 @@ public class OID
     /// OID comment, for example X.509 extension
     /// </summary>
     public string Comment { get; private set; }
-
-    private byte[]? _byteValue;
     /// <summary>
     /// <see cref="Value"/> encoded as byte[]
     /// </summary>
@@ -104,7 +106,10 @@ public class OID
         get { return _byteValue ??= OidEncoder.GetBytes(Value); }
     }
 
-    private string DebuggerDisplay => $"\"{Value}\"" + (string.IsNullOrEmpty(FriendlyName) ? "" : $" ({FriendlyName})");
+    /// <summary>
+    /// The registered OIDs, keyed by value, for example "2.5.29.29". Use <see cref="Register"/> to add one.
+    /// </summary>
+    public static IReadOnlyDictionary<string, OID> OidDictionary => KnownOids.Registry;
 
     /// <summary>
     /// Returns the registered OID with this value, or a new OID with no friendly name when none is registered.
@@ -143,11 +148,6 @@ public class OID
         }
         KnownOids.Registry[oid.Value] = oid;
     }
-
-    /// <summary>
-    /// The registered OIDs, keyed by value, for example "2.5.29.29". Use <see cref="Register"/> to add one.
-    /// </summary>
-    public static IReadOnlyDictionary<string, OID> OidDictionary => KnownOids.Registry;
 
     /// <summary>Holds the registry, so it is built on first use rather than whenever <see cref="OID"/> is touched.</summary>
     private static class KnownOids

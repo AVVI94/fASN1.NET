@@ -9,8 +9,6 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class ChildrenListTests
 {
-    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
-
     [Fact]
     public void ParsedTree_CanBeEditedAndSerialized()
     {
@@ -132,4 +130,6 @@ public class ChildrenListTests
             }
         }
     }
+
+    private static byte[] H(string hex) => Convert.FromHexString(hex.Replace(" ", ""));
 }

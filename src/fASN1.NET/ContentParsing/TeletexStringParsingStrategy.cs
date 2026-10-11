@@ -11,6 +11,9 @@ public class TeletexStringParsingStrategy : IContentParsingStrategy
 {
     private static readonly UTF8Encoding _strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    public static TeletexStringParsingStrategy Default { get; } = new TeletexStringParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
     {
@@ -29,7 +32,4 @@ public class TeletexStringParsingStrategy : IContentParsingStrategy
             return new string(chars);
         }
     }
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-    public static TeletexStringParsingStrategy Default { get; } = new TeletexStringParsingStrategy();
 }

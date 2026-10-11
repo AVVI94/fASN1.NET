@@ -101,23 +101,6 @@ public readonly struct KeyUsage
     }
 
     /// <summary>
-    /// Decodes the content of a keyUsage BIT STRING: the unused-bits byte, then the flags with
-    /// digitalSignature (bit 0) as the most significant bit of the first byte and decipherOnly (bit 8)
-    /// as the most significant bit of the second.
-    /// </summary>
-    internal static KeyUsage FromBitStringContent(byte[] content, bool critical)
-    {
-        var first = content.Length > 1 ? content[1] : (byte)0;
-        var keyUsages = new bool[8];
-        for (int i = 0; i < 8; i++)
-        {
-            keyUsages[i] = (first & (0x80 >> i)) != 0;
-        }
-        var decipherOnly = content.Length > 2 && (content[2] & 0x80) != 0;
-        return new KeyUsage(keyUsages, critical, decipherOnly);
-    }
-
-    /// <summary>
     /// Gets the array of key usages. Each element represents one bit in the key usage byte.
     /// </summary>
     public readonly bool[]? KeyUsages { get; }
@@ -197,6 +180,23 @@ public readonly struct KeyUsage
     /// Gets a value indicating whether the key usage is critical.
     /// </summary>
     public readonly bool Critical { get; }
+
+    /// <summary>
+    /// Decodes the content of a keyUsage BIT STRING: the unused-bits byte, then the flags with
+    /// digitalSignature (bit 0) as the most significant bit of the first byte and decipherOnly (bit 8)
+    /// as the most significant bit of the second.
+    /// </summary>
+    internal static KeyUsage FromBitStringContent(byte[] content, bool critical)
+    {
+        var first = content.Length > 1 ? content[1] : (byte)0;
+        var keyUsages = new bool[8];
+        for (int i = 0; i < 8; i++)
+        {
+            keyUsages[i] = (first & (0x80 >> i)) != 0;
+        }
+        var decipherOnly = content.Length > 2 && (content[2] & 0x80) != 0;
+        return new KeyUsage(keyUsages, critical, decipherOnly);
+    }
 
     /// <summary>
     /// Returns a string that represents the current <see cref="KeyUsage"/>.

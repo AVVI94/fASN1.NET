@@ -8,12 +8,12 @@
 /// </summary>
 public class GeneralizedTimeParsingStrategy : IContentParsingStrategy
 {
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+    public static GeneralizedTimeParsingStrategy Default { get; } = new GeneralizedTimeParsingStrategy();
+
     /// <inheritdoc/>
     public string Parse(byte[] content)
         => Asn1Time.TryParseGeneralizedTime(content, out var value)
             ? Asn1Time.ToDisplayString(value)
             : OctetStringParsingStrategy.Default.Parse(content);
-
-    /// <summary>A shared instance; the strategy keeps no state.</summary>
-    public static GeneralizedTimeParsingStrategy Default { get; } = new GeneralizedTimeParsingStrategy();
 }

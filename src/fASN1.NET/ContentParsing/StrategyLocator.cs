@@ -63,6 +63,11 @@ public class StrategyLocator
         };
 
     /// <summary>
+    /// Gets the default instance of the strategy locator.
+    /// </summary>
+    public static StrategyLocator Default { get; protected set; } = new StrategyLocator();
+
+    /// <summary>
     /// Gets the content parsing strategy for the specified tag.
     /// </summary>
     /// <param name="tag">The tag.</param>
@@ -88,9 +93,4 @@ public class StrategyLocator
 
         return Base64ParsingStrategy.Default;
     }
-
-    /// <summary>
-    /// Gets the default instance of the strategy locator.
-    /// </summary>
-    public static StrategyLocator Default { get; protected set; } = new StrategyLocator();
 }

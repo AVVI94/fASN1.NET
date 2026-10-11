@@ -30,21 +30,6 @@ public class BitString : TagBase
     /// <inheritdoc/>
     public override int TagClass => 0;
 
-    private static byte[]? WithUnusedBits(byte[]? content)
-    {
-        if (content is null)
-        {
-            return null;
-        }
-
-        if (content.Length == 0)
-        {
-            return [0x00]; // no bits
-        }
-
-        return [(byte)CalculateUnusedBits(content), .. content];
-    }
-
     /// <summary>
     /// Gets the number of trailing zero bits in the last byte, which the BIT STRING constructors use as the
     /// unused-bits count. A last byte of 0 counts as having no unused bits.
@@ -66,5 +51,20 @@ public class BitString : TagBase
             unusedBits++;
         }
         return unusedBits;
+    }
+
+    private static byte[]? WithUnusedBits(byte[]? content)
+    {
+        if (content is null)
+        {
+            return null;
+        }
+
+        if (content.Length == 0)
+        {
+            return [0x00]; // no bits
+        }
+
+        return [(byte)CalculateUnusedBits(content), .. content];
     }
 }

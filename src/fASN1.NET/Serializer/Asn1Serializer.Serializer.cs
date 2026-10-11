@@ -8,7 +8,8 @@ using fASN1.NET.Tags;
 namespace fASN1.NET;
 public static partial class Asn1Serializer
 {
-    #region Serialize
+    private const byte BIT_STRING = 0x03;
+
     /// <summary>
     /// Serializes the specified ASN.1 tag into a byte array.
     /// </summary>
@@ -104,66 +105,6 @@ public static partial class Asn1Serializer
     }
 
     /// <summary>
-    /// Puts the components of every SET in <paramref name="encoding"/> in DER order by moving their encodings, which
-    /// lie side by side in the SET's contents octets. Tags are in pre-order, so walking SETs from the last one handles
-    /// every SET inside another before the one enclosing it; reordering inside a component does not move the component.
-    /// </summary>
-    private static void SortSets(byte[] encoding, List<byte> identifierOctets, List<int> parents, int[] encodingStarts, int[] encodingLengths, List<int> contentsLengths)
-    {
-        Dictionary<int, List<int>>? setChildren = null;
-        for (int i = 1; i < identifierOctets.Count; i++)
-        {
-            if (identifierOctets[parents[i]] != Ber.SET)
-            {
-                continue;
-            }
-
-            setChildren ??= [];
-            if (!setChildren.TryGetValue(parents[i], out var children))
-            {
-                setChildren[parents[i]] = children = [];
-            }
-
-            children.Add(i);
-        }
-        if (setChildren is null)
-        {
-            return;
-        }
-
-        var sets = new List<int>(setChildren.Keys);
-        sets.Sort((a, b) => b.CompareTo(a));
-        foreach (var set in sets)
-        {
-            var children = setChildren[set];
-            var ranges = new (int Start, int Length)[children.Count];
-            var isSorted = true;
-            for (int i = 0; i < children.Count; i++)
-            {
-                ranges[i] = (encodingStarts[children[i]], encodingLengths[children[i]]);
-                if (i > 0 && CompareEncodings(encoding, ranges[i - 1], ranges[i]) > 0)
-                {
-                    isSorted = false;
-                }
-            }
-            if (isSorted)
-            {
-                continue;
-            }
-
-            Array.Sort(ranges, (a, b) => CompareEncodings(encoding, a, b));
-            var sorted = new byte[contentsLengths[set]];
-            var offset = 0;
-            foreach (var (start, length) in ranges)
-            {
-                Buffer.BlockCopy(encoding, start, sorted, offset, length);
-                offset += length;
-            }
-            Buffer.BlockCopy(sorted, 0, encoding, encodingStarts[children[0]], sorted.Length);
-        }
-    }
-
-    /// <summary>
     /// Compares two encodings as X.690 §11.6 orders SET OF components: as octet strings, the shorter one padded at
     /// its end with zero octets.
     /// </summary>
@@ -189,62 +130,6 @@ public static partial class Asn1Serializer
         }
         return 0;
     }
-
-    private const byte BIT_STRING = 0x03;
-
-    /// <summary>The first identifier octet of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
-    private static byte FirstIdentifierOctet(ITag tag, bool hasChildren)
-    {
-        var tagClass = tag.TagClass;
-        var number = tag.TagNumber;
-        if (tagClass is < 0 or > 3 || number < 0)
-        {
-            throw new ArgumentException(
-                $"{tag.TagName} has the class {tagClass} and tag number {number}; the class must be 0 to 3 and the number 0 or more.", nameof(tag));
-        }
-
-        // A universal BIT STRING or OCTET STRING with children holds them as its encapsulated value, so it stays
-        // primitive, unless it was created constructed: an Unknown tag created with the constructed bit stays so.
-        var isConstructed = hasChildren
-            ? !(tagClass == 0 && number is (int)Tag.BitString or (int)Tag.OctetString) || tag is Unknown { HasConstructedIdentifier: true }
-            : tag.IsConstructed;
-        return (byte)((tagClass << 6) | (isConstructed ? Ber.CONSTRUCTED_FLAG : 0) | Math.Min(number, Ber.HIGH_TAG_NUMBER_FORM));
-    }
-
-    /// <summary>Number of identifier octets: one, or in the high-tag-number form one more per 7 bits of the number.</summary>
-    private static int IdentifierOctetCount(int tagNumber)
-    {
-        if (tagNumber < Ber.HIGH_TAG_NUMBER_FORM)
-        {
-            return 1;
-        }
-
-        var size = 2;
-        while ((tagNumber >>= 7) != 0)
-        {
-            size++;
-        }
-
-        return size;
-    }
-
-    /// <summary>
-    /// Writes the identifier octets: the first, then in the high-tag-number form the number in base 128, most
-    /// significant digit first, with bit 8 set on every subsequent octet but the last (X.690 §8.1.2.4).
-    /// </summary>
-    private static int WriteIdentifierOctets(byte first, int tagNumber, byte[] destination, int offset)
-    {
-        destination[offset] = first;
-        var size = IdentifierOctetCount(tagNumber);
-        for (int i = size - 1; i > 0; i--)
-        {
-            destination[offset + i] = (byte)((tagNumber & Ber.TAG_NUMBER_DIGIT_MASK) | (i == size - 1 ? 0 : Ber.TAG_NUMBER_CONTINUATION_FLAG));
-            tagNumber >>= 7;
-        }
-        return size;
-    }
-
-    #endregion
 
     /// <summary>
     /// Converts the specified ASN.1 tag to its string representation using the default options.
@@ -305,6 +190,118 @@ public static partial class Asn1Serializer
             }
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Puts the components of every SET in <paramref name="encoding"/> in DER order by moving their encodings, which
+    /// lie side by side in the SET's contents octets. Tags are in pre-order, so walking SETs from the last one handles
+    /// every SET inside another before the one enclosing it; reordering inside a component does not move the component.
+    /// </summary>
+    private static void SortSets(byte[] encoding, List<byte> identifierOctets, List<int> parents, int[] encodingStarts, int[] encodingLengths, List<int> contentsLengths)
+    {
+        Dictionary<int, List<int>>? setChildren = null;
+        for (int i = 1; i < identifierOctets.Count; i++)
+        {
+            if (identifierOctets[parents[i]] != Ber.SET)
+            {
+                continue;
+            }
+
+            setChildren ??= [];
+            if (!setChildren.TryGetValue(parents[i], out var children))
+            {
+                setChildren[parents[i]] = children = [];
+            }
+
+            children.Add(i);
+        }
+        if (setChildren is null)
+        {
+            return;
+        }
+
+        var sets = new List<int>(setChildren.Keys);
+        sets.Sort((a, b) => b.CompareTo(a));
+        foreach (var set in sets)
+        {
+            var children = setChildren[set];
+            var ranges = new (int Start, int Length)[children.Count];
+            var isSorted = true;
+            for (int i = 0; i < children.Count; i++)
+            {
+                ranges[i] = (encodingStarts[children[i]], encodingLengths[children[i]]);
+                if (i > 0 && CompareEncodings(encoding, ranges[i - 1], ranges[i]) > 0)
+                {
+                    isSorted = false;
+                }
+            }
+            if (isSorted)
+            {
+                continue;
+            }
+
+            Array.Sort(ranges, (a, b) => CompareEncodings(encoding, a, b));
+            var sorted = new byte[contentsLengths[set]];
+            var offset = 0;
+            foreach (var (start, length) in ranges)
+            {
+                Buffer.BlockCopy(encoding, start, sorted, offset, length);
+                offset += length;
+            }
+            Buffer.BlockCopy(sorted, 0, encoding, encodingStarts[children[0]], sorted.Length);
+        }
+    }
+
+    /// <summary>The first identifier octet of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
+    private static byte FirstIdentifierOctet(ITag tag, bool hasChildren)
+    {
+        var tagClass = tag.TagClass;
+        var number = tag.TagNumber;
+        if (tagClass is < 0 or > 3 || number < 0)
+        {
+            throw new ArgumentException(
+                $"{tag.TagName} has the class {tagClass} and tag number {number}; the class must be 0 to 3 and the number 0 or more.", nameof(tag));
+        }
+
+        // A universal BIT STRING or OCTET STRING with children holds them as its encapsulated value, so it stays
+        // primitive, unless it was created constructed: an Unknown tag created with the constructed bit stays so.
+        var isConstructed = hasChildren
+            ? !(tagClass == 0 && number is (int)Tag.BitString or (int)Tag.OctetString) || tag is Unknown { HasConstructedIdentifier: true }
+            : tag.IsConstructed;
+        return (byte)((tagClass << 6) | (isConstructed ? Ber.CONSTRUCTED_FLAG : 0) | Math.Min(number, Ber.HIGH_TAG_NUMBER_FORM));
+    }
+
+    /// <summary>Number of identifier octets: one, or in the high-tag-number form one more per 7 bits of the number.</summary>
+    private static int IdentifierOctetCount(int tagNumber)
+    {
+        if (tagNumber < Ber.HIGH_TAG_NUMBER_FORM)
+        {
+            return 1;
+        }
+
+        var size = 2;
+        while ((tagNumber >>= 7) != 0)
+        {
+            size++;
+        }
+
+        return size;
+    }
+
+    /// <summary>
+    /// Writes the identifier octets: the first, then in the high-tag-number form the number in base 128, most
+    /// significant digit first, with bit 8 set on every subsequent octet but the last (X.690 §8.1.2.4).
+    /// </summary>
+    private static int WriteIdentifierOctets(byte first, int tagNumber, byte[] destination, int offset)
+    {
+        destination[offset] = first;
+        var size = IdentifierOctetCount(tagNumber);
+        for (int i = size - 1; i > 0; i--)
+        {
+            destination[offset + i] = (byte)((tagNumber & Ber.TAG_NUMBER_DIGIT_MASK) | (i == size - 1 ? 0 : Ber.TAG_NUMBER_CONTINUATION_FLAG));
+            tagNumber >>= 7;
+        }
+        return size;
     }
 
     private static void AppendTag(ITag tag,StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)

@@ -51,6 +51,43 @@ public class FuzzTests
         Assert.True(oracleAccepted > COUNT / 2, $"only {oracleAccepted} of {COUNT} generated documents were valid BER");
     }
 
+    [Theory]
+    [InlineData(11)]
+    [InlineData(12)]
+    public void ThrowingFactory_SatisfiesContract(int seed)
+    {
+        var rng = new Random(seed);
+        for (int i = 0; i < 300; i++)
+        {
+            var data = BerGenerator.Document(rng);
+            var throwOn = rng.Next(1, 40);
+            Contract.Check(data, () => new Contract.ThrowingFactory(throwOn));
+        }
+    }
+
+    internal static byte[] Mutate(byte[] input, Random rng)
+    {
+        var data = input.ToList();
+        int edits = 1 + rng.Next(3);
+        for (int e = 0; e < edits && data.Count > 0; e++)
+        {
+            int pos = rng.Next(data.Count);
+            switch (rng.Next(9))
+            {
+                case 0: data[pos] ^= (byte)(1 << rng.Next(8)); break;                  // bit flip
+                case 1: data[pos] = (byte)rng.Next(256); break;                         // random byte
+                case 2: data.RemoveAt(pos); break;                                      // delete
+                case 3: data.Insert(pos, (byte)rng.Next(256)); break;                   // insert
+                case 4: data.RemoveRange(pos, data.Count - pos); break;                 // truncate
+                case 5: data[pos] = 0x80; break;                                        // make a length indefinite
+                case 6: data.InsertRange(pos, [0x00, 0x00]); break;                     // stray EOC
+                case 7: data[pos] = (byte)(data[pos] ^ 0x20); break;                    // toggle constructed bit
+                case 8: data[pos] = (byte)(0x81 + rng.Next(6)); break;                  // long-form length marker
+            }
+        }
+        return data.Count == 0 ? [0x30] : data.ToArray();
+    }
+
     /// <summary>
     /// Checks the contract and, when the oracle can decode the input, the complete tree.
     /// Returns whether the oracle accepted the input.
@@ -79,20 +116,6 @@ public class FuzzTests
         return true;
     }
 
-    [Theory]
-    [InlineData(11)]
-    [InlineData(12)]
-    public void ThrowingFactory_SatisfiesContract(int seed)
-    {
-        var rng = new Random(seed);
-        for (int i = 0; i < 300; i++)
-        {
-            var data = BerGenerator.Document(rng);
-            var throwOn = rng.Next(1, 40);
-            Contract.Check(data, () => new Contract.ThrowingFactory(throwOn));
-        }
-    }
-
     private static int StableSeed(string s)
     {
         unchecked
@@ -105,29 +128,6 @@ public class FuzzTests
 
             return h;
         }
-    }
-
-    internal static byte[] Mutate(byte[] input, Random rng)
-    {
-        var data = input.ToList();
-        int edits = 1 + rng.Next(3);
-        for (int e = 0; e < edits && data.Count > 0; e++)
-        {
-            int pos = rng.Next(data.Count);
-            switch (rng.Next(9))
-            {
-                case 0: data[pos] ^= (byte)(1 << rng.Next(8)); break;                  // bit flip
-                case 1: data[pos] = (byte)rng.Next(256); break;                         // random byte
-                case 2: data.RemoveAt(pos); break;                                      // delete
-                case 3: data.Insert(pos, (byte)rng.Next(256)); break;                   // insert
-                case 4: data.RemoveRange(pos, data.Count - pos); break;                 // truncate
-                case 5: data[pos] = 0x80; break;                                        // make a length indefinite
-                case 6: data.InsertRange(pos, [0x00, 0x00]); break;                     // stray EOC
-                case 7: data[pos] = (byte)(data[pos] ^ 0x20); break;                    // toggle constructed bit
-                case 8: data[pos] = (byte)(0x81 + rng.Next(6)); break;                  // long-form length marker
-            }
-        }
-        return data.Count == 0 ? [0x30] : data.ToArray();
     }
 }
 

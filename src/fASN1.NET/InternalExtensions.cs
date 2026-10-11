@@ -32,11 +32,6 @@ internal static class InternalExtensions
     public static readonly byte[] _dateOfBirthOidSequence = OID.GetOrCreate(OID.DATE_OF_BIRTH).ByteValue;
     public static readonly byte[] _placeOfBirthOidSequence = OID.GetOrCreate(OID.PLACE_OF_BIRTH).ByteValue;
 
-    /// <summary>Whether <paramref name="tag"/> is the constructed context-specific tag [<paramref name="number"/>].</summary>
-    private static bool IsContextConstructed(ITag tag, int number)
-        => tag.TagClass == 2 && tag.TagNumber == number && tag.IsConstructed;
-
-    #region Structure
     /// <summary>
     /// Whether <paramref name="tag"/> is an X.509 v3 certificate (RFC 5280 §4.1):
     /// <c>SEQUENCE { tbsCertificate, signatureAlgorithm AlgorithmIdentifier, signatureValue BIT STRING }</c> with
@@ -92,35 +87,12 @@ internal static class InternalExtensions
                && (info.Children.Count == 3 || IsContextConstructed(info.Children[3], 0));
     }
 
-    private static bool IsSignedSequence(ITag tag)
-        => tag.Is(Tag.Sequence)
-           && tag.Children.Count == 3
-           && IsAlgorithmIdentifier(tag.Children[1])
-           && tag.Children[2] is { TagClass: 0, TagNumber: (int)Tag.BitString, Children.Count: 0 };
-
-    /// <summary><c>AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY OPTIONAL }</c></summary>
-    private static bool IsAlgorithmIdentifier(ITag tag)
-        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 1 or 2 }
-           && tag.Children[0].Is(Tag.ObjectIdentifier);
-
-    /// <summary><c>Name ::= SEQUENCE OF RelativeDistinguishedName</c>, each a SET.</summary>
-    private static bool IsName(ITag tag)
-        => tag.Is(Tag.Sequence) && tag.Children.All(IsSET);
-
-    /// <summary><c>SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }</c></summary>
-    private static bool IsSubjectPublicKeyInfo(ITag tag)
-        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
-           && IsAlgorithmIdentifier(tag.Children[0])
-           && tag.Children[1].Is(Tag.BitString);
-
     /// <summary>The tbsCertificate fields of a certificate that passed <see cref="IsV3Certificate"/>.</summary>
     public static IList<ITag> TbsFields(ITag certificate) => certificate.Children[0].Children;
 
     /// <summary>The subject Name of a request that passed <see cref="IsCertificationRequest"/>.</summary>
     public static ITag RequestSubject(ITag request) => request.Children[0].Children[1];
-    #endregion
 
-    #region Extensions
     /// <summary>
     /// The extensions of a v3 certificate (<c>extensions [3] EXPLICIT Extensions</c> in tbsCertificate), or of a
     /// request (the extensionRequest attribute, PKCS#9); empty when there are none or the tree is neither.
@@ -222,9 +194,7 @@ internal static class InternalExtensions
     /// <summary>The decoded value of the first extension with the given OID.</summary>
     public static ITag? FindExtensionContent(ITag root, byte[] oid, bool certificatesOnly = false)
         => FindExtension(root, oid, certificatesOnly) is { } extension ? GetExtensionContent(extension) : null;
-    #endregion
 
-    #region Key usage
     public static bool IsKeyUsageSequence(this ITag tag)
         => IsExtension(tag) && IsOid(tag.Children[0], _keyUsageOidSequence);
 
@@ -234,9 +204,7 @@ internal static class InternalExtensions
     /// <summary>The KeyUsage BIT STRING of a key usage extension, or <see langword="null"/>.</summary>
     public static ITag? GetKeyUsageBitStringTag(this ITag tag)
         => GetExtensionContent(tag) is { TagClass: 0, TagNumber: (int)Tag.BitString, Children.Count: 0 } bits ? bits : null;
-    #endregion
 
-    #region Content
     /// <summary>
     /// The content bytes of a primitive element as they were in the input. An OCTET STRING read as encapsulated
     /// children has empty <see cref="ITag.Content"/>; its bytes are those children serialized, which the parser
@@ -266,9 +234,7 @@ internal static class InternalExtensions
     {
         return string.IsNullOrWhiteSpace(oid);
     }
-    #endregion
 
-    #region Names
     /// <summary>
     /// Finds every value of the attribute <paramref name="oid"/> in a Name, in document order.
     /// </summary>
@@ -324,18 +290,6 @@ internal static class InternalExtensions
         }
     }
 
-    /// <summary>Adds the value of every AttributeTypeAndValue of the RDN <paramref name="set"/> whose type is <paramref name="oid"/>.</summary>
-    private static void AddMatchingValues(ITag set, byte[] oid, List<string> items)
-    {
-        foreach (var attribute in set.Children)
-        {
-            if (TryGetAttributeTypeAndValue(attribute, out var type, out var value) && IsOid(type, oid))
-            {
-                items.Add(value.ContentToString());
-            }
-        }
-    }
-
     /// <summary>Splits <c>AttributeTypeAndValue ::= SEQUENCE { type OBJECT IDENTIFIER, value ANY }</c>.</summary>
     public static bool TryGetAttributeTypeAndValue(ITag attribute, out ITag type, out ITag value)
     {
@@ -349,5 +303,41 @@ internal static class InternalExtensions
         value = attribute.Children[1];
         return true;
     }
-    #endregion
+
+    /// <summary>Whether <paramref name="tag"/> is the constructed context-specific tag [<paramref name="number"/>].</summary>
+    private static bool IsContextConstructed(ITag tag, int number)
+        => tag.TagClass == 2 && tag.TagNumber == number && tag.IsConstructed;
+
+    private static bool IsSignedSequence(ITag tag)
+        => tag.Is(Tag.Sequence)
+           && tag.Children.Count == 3
+           && IsAlgorithmIdentifier(tag.Children[1])
+           && tag.Children[2] is { TagClass: 0, TagNumber: (int)Tag.BitString, Children.Count: 0 };
+
+    /// <summary><c>AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY OPTIONAL }</c></summary>
+    private static bool IsAlgorithmIdentifier(ITag tag)
+        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 1 or 2 }
+           && tag.Children[0].Is(Tag.ObjectIdentifier);
+
+    /// <summary><c>Name ::= SEQUENCE OF RelativeDistinguishedName</c>, each a SET.</summary>
+    private static bool IsName(ITag tag)
+        => tag.Is(Tag.Sequence) && tag.Children.All(IsSET);
+
+    /// <summary><c>SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }</c></summary>
+    private static bool IsSubjectPublicKeyInfo(ITag tag)
+        => tag is { TagClass: 0, TagNumber: (int)Tag.Sequence, Children.Count: 2 }
+           && IsAlgorithmIdentifier(tag.Children[0])
+           && tag.Children[1].Is(Tag.BitString);
+
+    /// <summary>Adds the value of every AttributeTypeAndValue of the RDN <paramref name="set"/> whose type is <paramref name="oid"/>.</summary>
+    private static void AddMatchingValues(ITag set, byte[] oid, List<string> items)
+    {
+        foreach (var attribute in set.Children)
+        {
+            if (TryGetAttributeTypeAndValue(attribute, out var type, out var value) && IsOid(type, oid))
+            {
+                items.Add(value.ContentToString());
+            }
+        }
+    }
 }

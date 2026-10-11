@@ -14,6 +14,8 @@ namespace fASN1.NET.Tests;
 /// </summary>
 public class TimeTests
 {
+    public static IEnumerable<object[]> CertificateNames => TestCorpus.Names;
+
     [Theory]
     [InlineData("250102030405Z", "2025-01-02T03:04:05Z")]
     [InlineData("2501020304Z", "2025-01-02T03:04:00Z")]              // seconds are optional
@@ -108,8 +110,6 @@ public class TimeTests
         Assert.Equal(new GeneralizedTime(utc).Content, new GeneralizedTime(utc.ToLocalTime()).Content);
     }
 
-    public static IEnumerable<object[]> CertificateNames => TestCorpus.Names;
-
     [Theory]
     [MemberData(nameof(CertificateNames))]
     public void CertificateValidity_MatchesDotNetInUtc(string name)
@@ -173,11 +173,6 @@ public class TimeTests
         Assert.Contains("0102", text);
     }
 
-    private sealed class ThrowingStrategy : IContentParsingStrategy
-    {
-        public string Parse(byte[] content) => throw new FormatException("custom strategy failure");
-    }
-
     private static byte[] Ascii(string text) => System.Text.Encoding.ASCII.GetBytes(text);
 
     private static string Ascii(byte[] bytes) => System.Text.Encoding.ASCII.GetString(bytes);
@@ -194,5 +189,10 @@ public class TimeTests
         {
             CultureInfo.CurrentCulture = previous;
         }
+    }
+
+    private sealed class ThrowingStrategy : IContentParsingStrategy
+    {
+        public string Parse(byte[] content) => throw new FormatException("custom strategy failure");
     }
 }
