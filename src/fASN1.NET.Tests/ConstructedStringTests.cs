@@ -72,6 +72,62 @@ public class ConstructedStringTests
         Assert.Equal(error, actual);
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(100)]
+    [InlineData(5_000)]
+    public void OctetString_DeeplyNestedFragments_AreJoined(int depth)
+    {
+        // Each level is an indefinite-length constructed OCTET STRING with a fragment of its own before the next level.
+        var data = new List<byte>();
+        for (int i = 0; i < depth; i++)
+        {
+            data.AddRange([0x24, 0x80, 0x04, 0x01, 0x41]);
+        }
+
+        data.AddRange([0x04, 0x01, 0x42]);
+        for (int i = 0; i < depth; i++)
+        {
+            data.AddRange([0x00, 0x00]);
+        }
+
+        var tag = Asn1Serializer.Deserialize(data.ToArray());
+
+        Assert.IsType<OctetString>(tag);
+        Assert.Empty(tag.Children);
+        Assert.Equal([.. Enumerable.Repeat((byte)0x41, depth), 0x42], tag.Content);
+    }
+
+    [Fact]
+    public void OctetString_MixedNestedFragments_AreJoinedInOrder()
+    {
+        // Indefinite and definite constructed fragments around primitive ones: 41, 42 43, 44, 45.
+        Octets("4142434445").AssertMatches(Parse("24 80 24 80 04 01 41 24 04 04 02 42 43 00 00 04 01 44 24 03 04 01 45 00 00"));
+    }
+
+    [Theory]
+    [InlineData("24 80 24 80 04 01 41 00 00", 2)]          // the outer level has none
+    [InlineData("24 80 24 80 04 01 41", 4)]                // neither level has one: the inner one is reported
+    [InlineData("24 80 24 80 24 80 04 01 41 00 00 00 00", 2)] // only the outermost has none
+    [InlineData("23 80 23 80 03 02 00 41 00 00", 2)]
+    public void ConstructedString_MissingEndOfContentsAtAnyLevel_Fails(string hex, int contentsOffset)
+    {
+        var (tag, error) = Contract.Check(H(hex));
+
+        Assert.Null(tag);
+        Assert.Equal($"The contents in the indefinite form at offset {contentsOffset} have no end-of-contents octets", error);
+    }
+
+    [Fact]
+    public void ConstructedString_InnerIndefiniteFragmentCrossingADefiniteOuter_Fails()
+    {
+        // The inner fragment's end-of-contents octets lie after the end of the outer contents, so it has none.
+        var (tag, error) = Contract.Check(H("24 05 24 80 04 01 41 00 00"));
+
+        Assert.Null(tag);
+        Assert.Equal("The contents in the indefinite form at offset 4 have no end-of-contents octets", error);
+    }
+
     [Fact]
     public void ConstructedStringInsideAnOctetString_KeepsTheRawBytes()
     {

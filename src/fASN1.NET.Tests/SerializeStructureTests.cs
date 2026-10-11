@@ -1,3 +1,4 @@
+using System.Formats.Asn1;
 using fASN1.NET.Tags;
 using fASN1.NET.Tests.Infrastructure;
 
@@ -170,6 +171,31 @@ public class SerializeStructureTests
         var parsed = Asn1Serializer.Deserialize(H("31 06 02 01 09 02 01 01"));
 
         Assert.Equal(H("31 06 02 01 01 02 01 09"), Asn1Serializer.Serialize(parsed));
+    }
+
+    [Fact]
+    public void NestedSets_AreEachWrittenInDerOrder()
+    {
+        // The inner SETs are sorted first, then the outer one compares their DER encodings (X.690 §11.6).
+        var tag = new Set([new Set([new Integer(9), new Integer(1)]), new Set([new Integer(2)])]);
+
+        Assert.Equal(H("31 0D 31 03 02 01 02 31 06 02 01 01 02 01 09"), Asn1Serializer.Serialize(tag));
+    }
+
+    [Fact]
+    public void SetsInsideASequenceInsideASet_AreEachWrittenInDerOrder()
+    {
+        var parsed = Asn1Serializer.Deserialize(H("31 0F 30 08 31 06 02 01 09 02 01 01 02 01 05 05 00"));
+
+        var serialized = Asn1Serializer.Serialize(parsed);
+
+        Assert.Equal(H("31 0F 02 01 05 05 00 30 08 31 06 02 01 01 02 01 09"), serialized);
+        var outer = new AsnReader(serialized, AsnEncodingRules.DER).ReadSetOf();
+        Assert.Equal(5, (int)outer.ReadInteger());
+        outer.ReadNull();
+        var inner = outer.ReadSequence().ReadSetOf();
+        Assert.Equal(1, (int)inner.ReadInteger());
+        Assert.Equal(9, (int)inner.ReadInteger());
     }
 
     [Fact]
