@@ -111,8 +111,14 @@ internal ref partial struct StructureScanner<TSource>(TSource source)
             return FailCrossingContentsBound();
         }
 
-        if (encoding.IsEndOfContentsOctets && insideIndefiniteForm)
+        // End-of-contents octets are valid only as the end of contents in the indefinite form (X.690 §8.1.5).
+        if (encoding.IsEndOfContentsOctets)
         {
+            if (!insideIndefiniteForm)
+            {
+                return Fail(new ParseFailure(ParseFailureKind.EndOfContentsOutsideIndefiniteForm, encoding.IdentifierStart));
+            }
+
             return encoding.ContentsLength == 0
                 ? ScanResult.EndOfContentsRead
                 : Fail(new ParseFailure(ParseFailureKind.InvalidEndOfContents, encoding.IdentifierStart));
@@ -120,7 +126,7 @@ internal ref partial struct StructureScanner<TSource>(TSource source)
         if (_enclosing.Count > 0)
         {
             ref var enclosing = ref _enclosing.Last;
-            if (enclosing.MustBeDer && !CheckDerForm(encoding, enclosing.Kind))
+            if (enclosing.MustBeDer && !CheckDerForm(encoding))
             {
                 return ScanResult.Failed;
             }

@@ -43,12 +43,12 @@ internal readonly struct ParseFailure(ParseFailureKind kind, long offset, long v
         ParseFailureKind.ContentsLengthMismatch => $"The nested encodings do not match the length of the contents at offset {offset}",
         ParseFailureKind.MissingEndOfContents => $"The contents in the indefinite form at offset {offset} have no end-of-contents octets",
         ParseFailureKind.InvalidEndOfContents => $"Invalid end-of-contents octets at offset {offset}",
+        ParseFailureKind.EndOfContentsOutsideIndefiniteForm => $"End-of-contents octets at offset {offset} are not at the end of contents in the indefinite form",
 
         ParseFailureKind.InvalidFragment => $"The fragment at offset {offset} of a constructed string is not {tagName}",
         ParseFailureKind.InvalidBitStringFragment => $"The BIT STRING fragment at offset {offset} has an invalid number of unused bits; only the last fragment may have unused bits",
 
         ParseFailureKind.NonDerLengthInEncapsulation => $"The length of the encoding at offset {offset} is not DER, so the OCTET STRING does not encapsulate it",
-        ParseFailureKind.EndOfContentsInEncapsulation => $"End-of-contents octets at offset {offset} are not a value, so the OCTET STRING does not encapsulate encodings",
         ParseFailureKind.ConstructedStringInEncapsulation => $"The encoding at offset {offset} is a constructed string, which is not DER, so the OCTET STRING does not encapsulate it",
         ParseFailureKind.SetNotInDerOrderInEncapsulation => $"The SET component at offset {offset} is not in DER order, so the OCTET STRING does not encapsulate it",
         _ => "Unknown deserialization error",

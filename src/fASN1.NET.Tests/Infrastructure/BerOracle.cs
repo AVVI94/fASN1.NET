@@ -11,8 +11,10 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <remarks>
 /// The oracle encodes these library decisions on top of plain BER:
 /// <list type="bullet">
+/// <item>End-of-contents octets are valid only as the end of contents in the indefinite form (X.690 §8.1.5), where
+/// <see cref="AsnDecoder"/> consumes them; anywhere else they make the data invalid.</item>
 /// <item>A primitive universal OCTET STRING whose content is a complete run of valid elements with DER lengths
-/// (definite, minimal; none of them EOC) and every SET in DER order is shown with those elements as children; otherwise it is a leaf.</item>
+/// (definite, minimal) and every SET in DER order is shown with those elements as children; otherwise it is a leaf.</item>
 /// <item>A BIT STRING is always a leaf; its unused-bits byte stays in Content.</item>
 /// </list>
 /// </remarks>
@@ -36,6 +38,11 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
         var tag = Asn1Tag.Decode(src, out _);
         var (tagClass, isConstructed, number) = ((int)tag.TagClass >> 6, tag.IsConstructed, tag.TagValue);
         var content = src.Slice(contentOffset, contentLength);
+
+        if (tagClass == 0 && !isConstructed && number == 0)
+        {
+            throw new AsnContentException("End-of-contents octets outside the indefinite form");
+        }
 
         // Inside an OCTET STRING, a SET must also be in DER order (X.690 §11.6), which ReadSetOf checks.
         if (rules == AsnEncodingRules.DER && tagClass == 0 && isConstructed && number == 17)
@@ -131,8 +138,7 @@ internal sealed record OracleNode(int TagClass, bool IsConstructed, int TagNumbe
             // DER lengths only: the library re-encodes encapsulated children with DER lengths, so any other
             // form would change the OCTET STRING value on Serialize.
             children = ReadAll(content, AsnEncodingRules.DER);
-            // EOC cannot be content, so a direct EOC child means this is not a run of elements.
-            return children.Count > 0 && !children.Any(c => c.IsEoc);
+            return children.Count > 0;
         }
         catch (AsnContentException)
         {

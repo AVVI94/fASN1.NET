@@ -24,6 +24,7 @@ internal enum ParseFailureKind
     ContentsLengthMismatch,
     MissingEndOfContents,
     InvalidEndOfContents,
+    EndOfContentsOutsideIndefiniteForm,
 
     // Constructed strings (§8.6.4, §8.7.3, §8.23.6)
     InvalidFragment,
@@ -31,7 +32,6 @@ internal enum ParseFailureKind
 
     // Encapsulation in OCTET STRING: the encodings inside must be DER (see StructureScanner.Encapsulation.cs)
     NonDerLengthInEncapsulation,
-    EndOfContentsInEncapsulation,
     ConstructedStringInEncapsulation,
     SetNotInDerOrderInEncapsulation,
 }

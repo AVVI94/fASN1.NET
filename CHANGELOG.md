@@ -43,7 +43,9 @@ Parsing:
   inside it is in DER order; otherwise it stays a leaf with its raw `Content`. This guarantees that `Serialize` writes its value back unchanged.
 - Input that used to parse into a wrong tree now fails with an error: an element crossing
   the end of its container, a missing end-of-contents marker, `00` with a non-zero length inside an
-  indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`.
+  indefinite-length container, lengths with more than 6 octets or above `int.MaxValue`. End-of-contents octets
+  anywhere but at the end of contents in the indefinite form (X.690 §8.1.5), such as `00 00` at the root or inside
+  a definite-length SEQUENCE, are an error; they used to become an `Eoc` tag in the tree.
 - `TryDeserialize` always gives an error message when it returns `false`. An exception from a custom tag factory or
   from the stream propagates out of `Deserialize`. Error messages use the terms of X.690 (identifier, length and
   contents octets, encodings, end-of-contents octets, fragments), for example "The contents in the indefinite form at

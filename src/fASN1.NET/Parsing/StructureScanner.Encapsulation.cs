@@ -20,18 +20,12 @@ internal ref partial struct StructureScanner<TSource>
     /// on failure the encapsulation is rejected.
     /// </summary>
     /// <param name="encoding">The identifier and length octets just read.</param>
-    /// <param name="enclosingKind">The kind of the encoding that encloses it.</param>
-    private bool CheckDerForm(in IdentifierAndLength encoding, EnclosingEncodingKind enclosingKind)
+    private bool CheckDerForm(in IdentifierAndLength encoding)
     {
         // The length must be in the definite form, with the fewest octets (X.690 §10.1).
         if (!encoding.IsShortestDefiniteForm)
         {
             return FailEncapsulation(ParseFailureKind.NonDerLengthInEncapsulation, encoding.IdentifierStart);
-        }
-        // End-of-contents octets cannot stand for a value, so the contents are not a run of encodings.
-        if (encoding.IsEndOfContentsOctets && enclosingKind == EnclosingEncodingKind.EncapsulatingOctetString)
-        {
-            return FailEncapsulation(ParseFailureKind.EndOfContentsInEncapsulation, encoding.IdentifierStart);
         }
         // DER encodes strings only in the primitive form (§10.2); Serialize writes a constructed string as one.
         if (Ber.FragmentTagNumber(encoding.IdentifierOctet) != 0)

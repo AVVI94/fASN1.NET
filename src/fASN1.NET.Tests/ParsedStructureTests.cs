@@ -13,7 +13,7 @@ namespace fASN1.NET.Tests;
 public class ParsedStructureTests
 {
     public static IEnumerable<object[]> PrimitiveUniversalIdentifiers =>
-        TagIdentity.KnownUniversalIdentifiers.Where(id => id is not (0x30 or 0x31 or 0x2B)).Select(id => new object[] { id });
+        TagIdentity.KnownUniversalIdentifiers.Where(id => id is not (0x00 or 0x30 or 0x31 or 0x2B)).Select(id => new object[] { id });
 
     [Theory]
     [MemberData(nameof(PrimitiveUniversalIdentifiers))]
@@ -23,7 +23,7 @@ public class ParsedStructureTests
         var tag = Parse([(byte)identifier, 0x02, 0x41, 0x42]);
 
         new Expected(TagIdentity.ExpectedType(identifier), TagIdentity.ExpectedTagNumber(identifier), TagIdentity.ExpectedName(identifier),
-                     0, false, true, identifier == 0x00, H("4142"), []).AssertMatches(tag);
+                     0, false, true, false, H("4142"), []).AssertMatches(tag);
     }
 
     [Theory]
@@ -201,10 +201,17 @@ public class ParsedStructureTests
         Seq(Enumerable.Range(0, 1000).Select(i => Int($"{i >> 8:X2}{i & 0xFF:X2}")).ToArray()).AssertMatches(tag);
     }
 
-    [Fact]
-    public void EocInsideDefiniteContainer_IsAnOrdinaryChild()
+    [Theory]
+    [InlineData("00 00", 0)]
+    [InlineData("00 01 05", 0)]
+    [InlineData("30 05 00 00 02 01 05", 2)]
+    [InlineData("30 05 02 01 05 00 00", 5)]
+    [InlineData("30 03 00 01 05", 2)]
+    [InlineData("30 80 30 02 00 00 00 00", 4)]
+    [InlineData("24 04 04 00 00 00", 4)]
+    public void EocOutsideIndefiniteForm_Fails(string hex, int offset)
     {
-        AssertTree("30 05 00 00 02 01 05", Seq(Eoc(), Int("05")));
+        AssertFails(hex, $"End-of-contents octets at offset {offset} are not at the end of contents in the indefinite form");
     }
 
     [Fact]
