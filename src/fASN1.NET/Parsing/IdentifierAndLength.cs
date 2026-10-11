@@ -171,7 +171,7 @@ internal static class IdentifierAndLengthReader
 
             length = (length << 8) | (uint)octet;
         }
-        isShortestDefiniteForm &= length >= 0x80; // shorter lengths must use the short form
+        isShortestDefiniteForm &= length > Ber.MAX_SHORT_FORM_LENGTH; // shorter lengths must use the short form
 
         // Contents are read into a byte[], so lengths are limited to what an array can index.
         if (length > int.MaxValue)

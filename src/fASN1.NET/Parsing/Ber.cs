@@ -43,6 +43,61 @@ internal static class Ber
     /// </summary>
     public const int MAX_LENGTH_OCTETS = 6;
 
+    /// <summary>Largest length the short form holds, in the single length octet with bit 8 clear (§8.1.3.4).</summary>
+    public const int MAX_SHORT_FORM_LENGTH = 0x7F;
+
+    /// <summary>Largest length one subsequent length octet holds in the long form.</summary>
+    public const int MAX_ONE_OCTET_LENGTH = 0xFF;
+
+    /// <summary>Largest length two subsequent length octets hold in the long form.</summary>
+    public const int MAX_TWO_OCTET_LENGTH = 0xFFFF;
+
+    /// <summary>Largest length three subsequent length octets hold in the long form.</summary>
+    public const int MAX_THREE_OCTET_LENGTH = 0xFFFFFF;
+
+    /// <summary>
+    /// Most length octets the shortest form of an <see cref="int"/> length takes: the first octet and four subsequent
+    /// ones.
+    /// </summary>
+    public const int MAX_SHORTEST_LENGTH_OCTETS = 1 + sizeof(int);
+
+    /// <summary>Bits 7–1 of a subsequent identifier octet: seven bits of a high tag number (§8.1.2.4.2).</summary>
+    public const int TAG_NUMBER_DIGIT_MASK = 0x7F;
+
+    /// <summary>Number of length octets of <paramref name="length"/> in the definite form with the fewest octets (§10.1).</summary>
+    public static int LengthOctetCount(int length) => length <= MAX_SHORT_FORM_LENGTH ? 1 : 1 + LongFormOctetCount(length);
+
+    /// <summary>Number of subsequent length octets of <paramref name="length"/> in the long form, without leading zeros.</summary>
+    public static int LongFormOctetCount(int length)
+        => length > MAX_THREE_OCTET_LENGTH ? 4
+         : length > MAX_TWO_OCTET_LENGTH ? 3
+         : length > MAX_ONE_OCTET_LENGTH ? 2
+         : 1;
+
+    /// <summary>
+    /// Writes the length octets of <paramref name="length"/> in the definite form with the fewest octets: the short
+    /// form up to <see cref="MAX_SHORT_FORM_LENGTH"/>, otherwise the long form (§8.1.3.4, §8.1.3.5).
+    /// </summary>
+    /// <returns>The number of octets written.</returns>
+    public static int WriteLengthOctets(int length, byte[] destination, int offset)
+    {
+        if (length <= MAX_SHORT_FORM_LENGTH)
+        {
+            destination[offset] = (byte)length;
+            return 1;
+        }
+
+        // Long form: bit 8 set and the number of subsequent octets, then the length, most significant octet first.
+        var octetCount = LongFormOctetCount(length);
+        destination[offset] = (byte)(LONG_FORM_FLAG | octetCount);
+        for (int i = octetCount; i > 0; i--)
+        {
+            destination[offset + i] = (byte)length;
+            length >>= 8;
+        }
+        return 1 + octetCount;
+    }
+
     /// <summary>The encoding is constructed: its contents are nested encodings.</summary>
     public static bool IsConstructed(int identifierOctet) => (identifierOctet & CONSTRUCTED_FLAG) != 0;
 

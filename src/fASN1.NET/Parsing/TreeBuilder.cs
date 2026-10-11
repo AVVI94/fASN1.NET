@@ -18,6 +18,12 @@ internal static class TreeBuilder
 {
     private const int INITIAL_PARENT_CAPACITY = 16;
 
+    /// <summary>The identifier octet of OCTET STRING: universal 4, tag number below 31, a single octet.</summary>
+    private const int IDENTIFIER_OCTET_COUNT = 1;
+
+    /// <summary>Room for the identifier and length octets of a primitive OCTET STRING of any <see cref="int"/> length.</summary>
+    private const int IDENTIFIER_AND_LENGTH_ROOM = IDENTIFIER_OCTET_COUNT + Ber.MAX_SHORTEST_LENGTH_OCTETS;
+
     /// <summary>Builds the tree; <paramref name="failure"/> is only written when this fails.</summary>
     public static bool TryBuild<TSource>(ref TSource source, ReadOnlySpan<ScannedNode> nodes, ReadOnlySpan<ContentsFragment> fragments, ITagFactory tagFactory, [NotNullWhen(true)] out ITag? root, ref ParseFailure failure)
         where TSource : struct, IByteSource
@@ -83,8 +89,8 @@ internal static class TreeBuilder
     {
         tag = null;
         var isOctetString = node.IdentifierOctet == (int)Tag.OctetString;
-        // For an OCTET STRING, room for an identifier octet and the longest length octets in front of the contents.
-        var offset = isOctetString ? 6 : 0;
+        // For an OCTET STRING, room for its identifier octet and the longest length octets in front of the contents.
+        var offset = isOctetString ? IDENTIFIER_AND_LENGTH_ROOM : 0;
         var buffer = new byte[offset + node.ContentsLength];
         if (node.IdentifierOctet == (int)Tag.BitString)
         {
@@ -110,15 +116,9 @@ internal static class TreeBuilder
 
         // Write the identifier and length octets of the primitive encoding in front of the contents, and parse that.
         var length = (int)node.ContentsLength;
-        var lengthOctets = length < 0x80 ? 0 : length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
-        var start = 6 - 2 - lengthOctets;
+        var start = IDENTIFIER_AND_LENGTH_ROOM - IDENTIFIER_OCTET_COUNT - Ber.LengthOctetCount(length);
         buffer[start] = (byte)Tag.OctetString;
-        buffer[start + 1] = (byte)(lengthOctets == 0 ? length : Ber.LONG_FORM_FLAG | lengthOctets);
-        for (int i = lengthOctets; i > 0; i--, length >>= 8)
-        {
-            buffer[start + 1 + i] = (byte)length;
-        }
-
+        Ber.WriteLengthOctets(length, buffer, start + IDENTIFIER_OCTET_COUNT);
         var encoded = new ByteArraySource(buffer) { Position = start };
         return Asn1Parser.TryParse(ref encoded, tagFactory, out tag, out _);
     }

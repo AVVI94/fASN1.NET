@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using fASN1.NET.ContentParsing;
+using fASN1.NET.Parsing;
 using fASN1.NET.Tags;
 
 namespace fASN1.NET;
@@ -72,7 +73,7 @@ public static partial class Asn1Serializer
         var encodingLengths = new int[tags.Count];
         for (int i = tags.Count - 1; i >= 0; i--)
         {
-            encodingLengths[i] = checked(IdentifierOctetCount(tagNumbers[i]) + LengthOctetCount(contentsLengths[i]) + contentsLengths[i]);
+            encodingLengths[i] = checked(IdentifierOctetCount(tagNumbers[i]) + Ber.LengthOctetCount(contentsLengths[i]) + contentsLengths[i]);
             if (i > 0)
             {
                 contentsLengths[parents[i]] = checked(contentsLengths[parents[i]] + encodingLengths[i]);
@@ -86,7 +87,7 @@ public static partial class Asn1Serializer
         {
             encodingStarts[i] = position;
             position += WriteIdentifierOctets(identifierOctets[i], tagNumbers[i], result, position);
-            position += WriteLengthOctets(contentsLengths[i], result, position);
+            position += Ber.WriteLengthOctets(contentsLengths[i], result, position);
             if (TagBase.GetChildCount(tags[i]) == 0)
             {
                 var contents = tags[i].Content;
@@ -112,7 +113,7 @@ public static partial class Asn1Serializer
         Dictionary<int, List<int>>? setChildren = null;
         for (int i = 1; i < identifierOctets.Count; i++)
         {
-            if (identifierOctets[parents[i]] != SET)
+            if (identifierOctets[parents[i]] != Ber.SET)
             {
                 continue;
             }
@@ -190,9 +191,6 @@ public static partial class Asn1Serializer
     }
 
     private const byte BIT_STRING = 0x03;
-    private const byte SET = 0x31;
-    private const byte CONSTRUCTED_FLAG = 0x20;
-    private const int TAG_NUMBER_MASK = 0x1F;
 
     /// <summary>The first identifier octet of <paramref name="tag"/>; see <see cref="Serialize"/>.</summary>
     private static byte FirstIdentifierOctet(ITag tag, bool hasChildren)
@@ -210,13 +208,13 @@ public static partial class Asn1Serializer
         var isConstructed = hasChildren
             ? !(tagClass == 0 && number is (int)Tag.BitString or (int)Tag.OctetString) || tag is Unknown { HasConstructedIdentifier: true }
             : tag.IsConstructed;
-        return (byte)((tagClass << 6) | (isConstructed ? CONSTRUCTED_FLAG : 0) | Math.Min(number, TAG_NUMBER_MASK));
+        return (byte)((tagClass << 6) | (isConstructed ? Ber.CONSTRUCTED_FLAG : 0) | Math.Min(number, Ber.HIGH_TAG_NUMBER_FORM));
     }
 
     /// <summary>Number of identifier octets: one, or in the high-tag-number form one more per 7 bits of the number.</summary>
     private static int IdentifierOctetCount(int tagNumber)
     {
-        if (tagNumber < TAG_NUMBER_MASK)
+        if (tagNumber < Ber.HIGH_TAG_NUMBER_FORM)
         {
             return 1;
         }
@@ -240,37 +238,12 @@ public static partial class Asn1Serializer
         var size = IdentifierOctetCount(tagNumber);
         for (int i = size - 1; i > 0; i--)
         {
-            destination[offset + i] = (byte)((tagNumber & 0x7F) | (i == size - 1 ? 0 : 0x80));
+            destination[offset + i] = (byte)((tagNumber & Ber.TAG_NUMBER_DIGIT_MASK) | (i == size - 1 ? 0 : Ber.TAG_NUMBER_CONTINUATION_FLAG));
             tagNumber >>= 7;
         }
         return size;
     }
 
-    /// <summary>Number of length octets in the definite form with the fewest octets (X.690 §10.1).</summary>
-    private static int LengthOctetCount(int length) => length < 0x80 ? 1 : 1 + LongFormOctetCount(length);
-
-    /// <summary>Number of subsequent length octets in the long form.</summary>
-    private static int LongFormOctetCount(int length) => length > 0xFFFFFF ? 4 : length > 0xFFFF ? 3 : length > 0xFF ? 2 : 1;
-
-    /// <summary>Writes the length octets: the short form below 128, otherwise the long form (§8.1.3.4, §8.1.3.5).</summary>
-    private static int WriteLengthOctets(int length, byte[] destination, int offset)
-    {
-        if (length < 0x80)
-        {
-            destination[offset] = (byte)length;
-            return 1;
-        }
-
-        // Long form: bit 8 set and the number of subsequent octets, then the length, most significant octet first.
-        var octets = LongFormOctetCount(length);
-        destination[offset] = (byte)(0x80 | octets);
-        for (int i = octets; i > 0; i--)
-        {
-            destination[offset + i] = (byte)length;
-            length >>= 8;
-        }
-        return octets + 1;
-    }
     #endregion
 
     /// <summary>
