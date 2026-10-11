@@ -10,6 +10,9 @@ public static partial class Asn1Serializer
 {
     private const byte BIT_STRING = 0x03;
 
+    /// <summary>Characters that end a line in a value shown by TagToString.</summary>
+    private static readonly char[] _lineBreaks = ['\r', '\n'];
+
     /// <summary>
     /// Serializes the specified ASN.1 tag into a byte array.
     /// </summary>
@@ -304,7 +307,7 @@ public static partial class Asn1Serializer
         return size;
     }
 
-    private static void AppendTag(ITag tag,StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
+    private static void AppendTag(ITag tag, StringBuilder sb, Asn1StringSerializerOptions options, int level, string format, IndentationCache cache, ref string lastObjectIdentifier)
     {
         var indent = cache[level];
         var strategyLocator = options.ContentParsingStrategyLocator;
@@ -317,7 +320,9 @@ public static partial class Asn1Serializer
                                                   cache[level + 1] /*indent + options.IndentationString*/);
 
         string tagName = !options.IncludeTagNameForContentTags && content.Length != 0 ? "" : tag.TagName;
-        var tagNameAndContentSeparator = options.IncludeTagNameForContentTags && content.Length != 0 ? options.TagNameAndContentSeparator : "";
+        // No separator when the value starts on the next line, so the tag name line does not end in a space.
+        var valueOnNextLine = content.StartsWith(Environment.NewLine, StringComparison.Ordinal);
+        var tagNameAndContentSeparator = options.IncludeTagNameForContentTags && content.Length != 0 && !valueOnNextLine ? options.TagNameAndContentSeparator : "";
 
         _ = sb.AppendFormat(format, indent, tagName, tagNameAndContentSeparator, content);
 
@@ -348,37 +353,51 @@ public static partial class Asn1Serializer
         }
     }
 
+    /// <summary>
+    /// Lays out a value for the text. A value that fits on one line stays next to the tag name. Otherwise it goes on
+    /// the lines below, each indented one level deeper than the tag: a value with line breaks of its own keeps them,
+    /// and every one of its lines is indented and wrapped on its own, so the tree stays readable.
+    /// </summary>
     private static string ProcessContentString(string content, Asn1StringSerializerOptions options, string wrappedContentIndentation)
     {
-        if (options.MaximumContentLineLength < 1)
+        var maximum = options.MaximumContentLineLength;
+        var hasLineBreaks = content.IndexOfAny(_lineBreaks) >= 0;
+        if (!hasLineBreaks && (maximum < 1 || content.Length <= maximum))
         {
             return content;
         }
 
-        if (content.Length <= options.MaximumContentLineLength)
+        if (maximum >= 1 && options.ContentLengthHandling == ContentLengthHandling.Truncate && content.Length > maximum)
         {
-            return content;
+            content = content.Substring(0, maximum - options.TruncateString.Length) + options.TruncateString;
+            if (!hasLineBreaks)
+            {
+                return content;
+            }
         }
 
-        if (options.ContentLengthHandling == ContentLengthHandling.Truncate)
+        var lines = content.Replace("\r\n", "\n").Split(_lineBreaks);
+        var lineCount = lines.Length;
+        if (lineCount > 1 && lines[lineCount - 1].Length == 0)
         {
-            //return TruncateString(content, options.TruncateString, options.MaximumContentLineLength); - the bottom is faster lol
-            return content.Substring(0, (int)options.MaximumContentLineLength - options.TruncateString.Length) + options.TruncateString;
+            lineCount--; // a final line break ends the last line rather than starting an empty one
         }
 
-        var s = options.ContentLengthHandling switch
+        var block = new StringBuilder();
+        for (int i = 0; i < lineCount; i++)
         {
-            ContentLengthHandling.Wrap => WrapString(options, content, wrappedContentIndentation),
-            ContentLengthHandling.WordWrap => WordWrapString(options, content, wrappedContentIndentation),
-            _ => throw new ArgumentOutOfRangeException(nameof(options.ContentLengthHandling))
-        };
-
-        if (s.AsSpan().Contains(Environment.NewLine.AsSpan(), StringComparison.CurrentCulture)
-            || s.AsSpan().StartsWith(wrappedContentIndentation.AsSpan()))
-        {
-            s = Environment.NewLine + s;
+            var line = lines[i];
+            var laidOut = maximum < 1 || line.Length <= maximum || options.ContentLengthHandling == ContentLengthHandling.Truncate
+                ? wrappedContentIndentation + line
+                : options.ContentLengthHandling switch
+                {
+                    ContentLengthHandling.Wrap => WrapString(options, line, wrappedContentIndentation),
+                    ContentLengthHandling.WordWrap => WordWrapString(options, line, wrappedContentIndentation),
+                    _ => throw new ArgumentOutOfRangeException(nameof(options.ContentLengthHandling)),
+                };
+            _ = block.Append(Environment.NewLine).Append(laidOut);
         }
-        return s;
+        return block.ToString();
     }
 
     //private static unsafe string TruncateString(string content, string truncate, int length)
