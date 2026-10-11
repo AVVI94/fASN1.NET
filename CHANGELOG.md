@@ -55,10 +55,10 @@ Parsing:
 - `TryDeserialize` never throws, in every overload, and always gives an error message when it returns `false`: for
   invalid data, a `null` argument (the byte-array overloads used to throw `ArgumentNullException`), a stream that
   cannot seek, or an exception from the stream or a custom tag factory. `Deserialize` throws
-  `Asn1DeserializationException` for invalid data, empty data included (it used to throw `ArgumentException`),
-  `ArgumentNullException` for a `null` argument (a `null` stream used to give `ArgumentException`),
-  `ArgumentException` for a stream that cannot seek, and lets an exception from the stream or a custom tag factory
-  propagate. The message for empty data is "The data is empty" instead of "Stream is null or empty.".
+  `Asn1DeserializationException` for invalid data, `ArgumentNullException` for a `null` argument (a `null` stream
+  used to give `ArgumentException`), `ArgumentException` for empty data or a stream that cannot seek, and lets an
+  exception from the stream or a custom tag factory propagate. The message for empty data is "The data is empty"
+  instead of "Stream is null or empty.".
 - Error messages use the terms of X.690 (identifier, length and contents octets, encodings, end-of-contents octets,
   fragments), for example "The contents in the indefinite form at offset 2 have no end-of-contents octets" instead
   of "Indefinite-length container at offset 2 has no end-of-contents marker".

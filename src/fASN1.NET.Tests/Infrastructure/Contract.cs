@@ -9,7 +9,8 @@ namespace fASN1.NET.Tests.Infrastructure;
 /// <list type="bullet">
 /// <item><c>TryDeserialize</c> never throws; it returns a tag, or <see langword="false"/> with an error message.</item>
 /// <item><c>Deserialize</c> returns the same tree, or throws when <c>TryDeserialize</c> fails, with the same message:
-/// <see cref="Asn1DeserializationException"/> for invalid data, otherwise the tag factory's exception.</item>
+/// <see cref="Asn1DeserializationException"/> for invalid data, <see cref="ArgumentException"/> for empty data,
+/// otherwise the tag factory's exception.</item>
 /// <item>The byte-array and stream overloads agree, and the stream is read from its current position. Only a stream
 /// may hold octets after the encoding; it is left just after the encoding.</item>
 /// <item>A parsed tree never has a node with both children and content.</item>
@@ -87,6 +88,10 @@ internal static class Contract
         if (ok)
         {
             TreeAssert.Equal(tag!, Asn1Serializer.Deserialize(data, factory()));
+        }
+        else if (data.Length == 0)
+        {
+            Assert.Equal("data", Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(data, factory())).ParamName);
         }
         else
         {

@@ -40,13 +40,13 @@ public class DeserializeContractTests
     }
 
     [Fact]
-    public void EmptyData_IsInvalidData()
+    public void EmptyData_TryDeserializeReturnsFalse_DeserializeThrowsArgumentException()
     {
         Assert.False(Asn1Serializer.TryDeserialize([], out var tag, out var error));
         Assert.Null(tag);
         Assert.Equal("The data is empty", error);
-        Assert.Equal("The data is empty", Assert.Throws<Asn1DeserializationException>(() => Asn1Serializer.Deserialize([])).Message);
-        Assert.Equal("The data is empty", Assert.Throws<Asn1DeserializationException>(() => Asn1Serializer.Deserialize(new MemoryStream())).Message);
+        Assert.Equal("data", Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize([])).ParamName);
+        Assert.Equal("stream", Assert.Throws<ArgumentException>(() => Asn1Serializer.Deserialize(new MemoryStream())).ParamName);
     }
 
     [Fact]
