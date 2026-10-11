@@ -16,8 +16,17 @@ namespace fASN1.NET;
 /// Reads common fields of X.509 certificates and PKCS#10 certificate requests from a parsed tree.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Only version 3 certificates are supported, by design: versions 1 and 2 cannot carry extensions. The
 /// <c>TryGet</c> methods never throw for malformed input; they return <see langword="false"/>.
+/// </para>
+/// <para>
+/// These methods recognize the structure of a certificate (RFC 5280 §4.1) or a request (RFC 2986 §4) and read
+/// fields from it. They do not validate against the profiles of those RFCs and do not verify signatures: a tree
+/// that <see cref="IsCertificate"/> accepts may still break rules such as the DER encoding of times in
+/// RFC 5280 §4.1.2.5 or the required attributes field of RFC 2986. Use a certificate validation library to decide
+/// whether a certificate or request can be trusted.
+/// </para>
 /// </remarks>
 public static partial class Extensions
 {
@@ -308,8 +317,14 @@ public static partial class Extensions
     /// Attempts to get the notAfter date from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="notAfter">The notAfter date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>).</param>
+    /// <param name="notAfter">The notAfter date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>) when the time has a zone.</param>
     /// <returns><see langword="true"/> if the notAfter date was found; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>
+    /// The time is read as X.680 allows it, which is more tolerant than RFC 5280 §4.1.2.5: UTCTime without seconds,
+    /// a time zone offset instead of <c>Z</c>, and a GeneralizedTime before 2050, without seconds or with a fraction
+    /// are all accepted. A GeneralizedTime without a time zone is local time and is returned with
+    /// <see cref="DateTimeKind.Unspecified"/>.
+    /// </remarks>
     public static bool TryGetCertificateNotAfter(this ITag tag, out DateTime notAfter)
     {
         notAfter = default;
@@ -338,8 +353,14 @@ public static partial class Extensions
     /// Attempts to get the notBefore date from the specified X.509v3 certificate tag.
     /// </summary>
     /// <param name="tag">The certificate tag to check.</param>
-    /// <param name="notBefore">The notBefore date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>).</param>
+    /// <param name="notBefore">The notBefore date of the certificate, in UTC (<see cref="DateTimeKind.Utc"/>) when the time has a zone.</param>
     /// <returns><see langword="true"/> if the notBefore date was found; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>
+    /// The time is read as X.680 allows it, which is more tolerant than RFC 5280 §4.1.2.5: UTCTime without seconds,
+    /// a time zone offset instead of <c>Z</c>, and a GeneralizedTime before 2050, without seconds or with a fraction
+    /// are all accepted. A GeneralizedTime without a time zone is local time and is returned with
+    /// <see cref="DateTimeKind.Unspecified"/>.
+    /// </remarks>
     public static bool TryGetCertificateNotBefore(this ITag tag, out DateTime notBefore)
     {
         notBefore = default;

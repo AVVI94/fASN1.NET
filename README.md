@@ -101,6 +101,10 @@ Not After: 07.03.2025 23:59:59
 Key Usage: DigitalSignature
 ```
 
+The certificate and request helpers recognize the structure of an X.509 v3 certificate (RFC 5280) or a PKCS#10
+request (RFC 2986) and read fields from it. They do not check the RFC profiles, such as the encoding of times, and
+do not verify signatures, so they do not tell whether a certificate can be trusted.
+
 ### Serialize ASN.1 Data
 
 This library also provides functionality for serializing ASN.1 data. The following example demonstrates how to serialize an ASN.1 tag.
