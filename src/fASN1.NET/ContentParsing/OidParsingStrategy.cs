@@ -1,0 +1,25 @@
+﻿using fASN1.NET.Oid;
+
+namespace fASN1.NET.ContentParsing;
+
+/// <summary>
+/// Shows OBJECT IDENTIFIER content in dotted form, followed by the friendly name and comment of a known OID.
+/// </summary>
+public class OidParsingStrategy : IContentParsingStrategy
+{
+    /// <summary>A shared instance; the strategy keeps no state.</summary>
+
+    public static OidParsingStrategy Default { get; } = new OidParsingStrategy();
+
+    /// <inheritdoc/>
+    public string Parse(byte[] content)
+    {
+        if (!OidEncoder.TryGetString(content, out var value))
+        {
+            return OctetStringParsingStrategy.ToHex(content); // not a valid encoding
+        }
+
+        var oid = OID.GetOrCreate(value);
+        return $"{oid.Value}{(string.IsNullOrEmpty(oid.FriendlyName) ? "" : $", {oid.FriendlyName}")}{(string.IsNullOrEmpty(oid.Comment) ? "" : $" ({oid.Comment})")}";
+    }
+}

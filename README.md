@@ -11,6 +11,12 @@ Features
 * Extract key usage, extended key usage, SAN (Subject Alternative Name), and other certificate details.
 * Support for long string content handling, including wrapping and word wrapping.
 
+The certificate helpers support X.509 version 3 certificates (RFC 5280) and PKCS#10 certificate requests (RFC 2986);
+version 1 and 2 certificates are not supported by design.
+
+> **Upgrading from 1.x?** Version 2.0 fixes several security issues and changes some results; see the
+> [changelog](CHANGELOG.md) for the breaking changes.
+
 ### ASN.1 references
 
 * [Wikipedia ASN.1](https://en.wikipedia.org/wiki/Abstract_Syntax_Notation_One)
@@ -29,6 +35,8 @@ Features
     * [Get Subject Directory Attributes](#get-subject-director-attributes-sda-from-a-certificate)
 
 - [Performance](#performance) 
+
+- [Changelog](CHANGELOG.md)
 
 ## Installation
 
@@ -90,8 +98,12 @@ Output:
 Issuer CN: Sectigo ECC Domain Validation Secure Server CA
 Subject CN: github.com
 Not After: 07.03.2025 23:59:59
-Key Usage: DigitalSignature, NonRepudiation
+Key Usage: DigitalSignature
 ```
+
+The certificate and request helpers recognize the structure of an X.509 v3 certificate (RFC 5280) or a PKCS#10
+request (RFC 2986) and read fields from it. They do not check the RFC profiles, such as the encoding of times, and
+do not verify signatures, so they do not tell whether a certificate can be trusted.
 
 ### Serialize ASN.1 Data
 
@@ -108,7 +120,7 @@ var root = new Sequence([
     new Sequence([
         new ObjectIdentifier([0,1,35,45,55,127,126]),
         new Utf8String(Encoding.UTF8.GetBytes("Random text")),
-        new ContextSpecific_0(children: [
+        new ContextSpecific_0(isConstructed: true, children: [
             new BitString(content: [123,125,222,255,0,1,4])
             ])
     ])
@@ -129,7 +141,7 @@ Sequence
  |  | ObjectIdentifier 0.0.1.35.45.55.127.126
  |  | UTF8String Random text
  |  | [0]
- |  |  | BitString 011110110111110111011110111111110000000000000001000
+ |  |  | BitString 011110110111110111011110111111110000000000000001000001
 ```
 
 ### Get Subject Director Attributes (SDA) from a certificate
@@ -193,28 +205,36 @@ bool success = tag.TryGetSubjectDirectoryAttributesFromCertificate(out var sda);
 
 ## Performance
 
-The following table shows the performance of the current implementation when working with certificates.
+Version 2.0 compared with 1.4.3, measured in the same run with BenchmarkDotNet (`fASN1.NET.Benchmark`). The
+certificate is GitHub's from the example above; the request is a 2 KB PKCS#10 request.
 
 ```
-BenchmarkDotNet v0.13.12, Windows 11 (10.0.22631.3880/23H2/2023Update/SunValley3)
-AMD Ryzen 7 7840HS with Radeon 780M Graphics, 1 CPU, 16 logical and 8 physical cores
-.NET SDK 8.0.300
-  [Host]     : .NET 8.0.5 (8.0.524.21615), X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI
-  DefaultJob : .NET 8.0.5 (8.0.524.21615), X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI
-````
+BenchmarkDotNet v0.13.12, Windows 11 (10.0.26300.9457)
+.NET SDK 10.0.400-preview.0.26322.102
+  [Host] : .NET 10.0.9 (10.0.926.27113), X64 RyuJIT AVX2
+Toolchain=InProcessEmitToolchain
+```
 
-| Method                          | Mean      | Error     | StdDev    | Gen0    | Gen1   | Allocated |
-|-------------------------------- |----------:|----------:|----------:|--------:|-------:|----------:|
-| DeserializeCertificate          |  4.846 us | 0.0961 us | 0.1733 us |  2.0294 | 0.1068 |  16.61 KB |
-| SerializeCertificateTagToString | 50.612 us | 0.3710 us | 0.3470 us | 10.9863 | 0.4883 |  90.45 KB |
+| Method                                 | 1.4.3 Mean | 2.0.0 Mean | 1.4.3 Allocated | 2.0.0 Allocated |
+|--------------------------------------- |-----------:|-----------:|----------------:|----------------:|
+| DeserializeCertificate                 |   6.643 us |   7.828 us |        16.34 KB |         6.94 KB |
+| DeserializeCertificateRequest          |   2.396 us |   2.875 us |         6.64 KB |         3.32 KB |
+| SerializeCertificate                   |   5.135 us |   6.347 us |        26.78 KB |         9.81 KB |
+| SerializeCertificateRequest            |   2.150 us |   2.907 us |        13.36 KB |         6.48 KB |
+| SerializeCertificateTagToString        |  51.563 us |  50.044 us |        89.84 KB |        80.21 KB |
+| SerializeCertificateRequestTagToString |  34.091 us |  34.800 us |       156.05 KB |       154.79 KB |
 
-The previous version of the library ([Asn1DecoderNet5](https://github.com/AVVI94/ASN1Decoder)) was like this:
+Parsing now allocates only the returned tree, less than half of what 1.4.3 allocated, and runs in constant stack
+space at any depth. It is about 20% slower than 1.4.3, which did not validate elements against their containers,
+let `Serialize` change OCTET STRING values, and supported neither multi-byte tags nor constructed strings.
+`Serialize` allocates about a third as much and sorts SETs into DER order, but takes 25–35% longer.
+
+An older measurement (.NET 8, another machine) of the library's predecessor,
+[Asn1DecoderNet5](https://github.com/AVVI94/ASN1Decoder), for reference:
 
 | Method                          | Mean      | Error     | StdDev    | Gen0    | Gen1   | Allocated |
 |-------------------------------- |----------:|----------:|----------:|--------:|-------:|----------:|
 | DeserializeCertificate          |  27.93 us |  0.105 us |  0.088 us |  2.7161 | 0.1526 |  22.23 KB |
 | SerializeCertificateTagToString |  89.47 us |  1.723 us |  1.527 us | 46.6309 | 7.2021 | 381.05 KB |
-
-The performance has been significantly improved, especially when serializing the data to a string.
 
 Note: The smaller and less complex the data, the better the performance (especially the memory allocation).

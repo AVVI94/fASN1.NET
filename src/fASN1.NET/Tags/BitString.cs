@@ -1,0 +1,70 @@
+using System.Collections.Generic;
+
+
+namespace fASN1.NET.Tags;
+
+/// <summary>
+/// The ASN.1 BIT STRING type (universal 3). The first content byte is the number of unused bits in the last byte.
+/// </summary>
+public class BitString : TagBase
+{
+    /// <summary>Creates the tag with the given content or children.</summary>
+    /// <param name="content">The content bytes; empty when <see langword="null"/>.</param>
+    /// <param name="children">The child tags, used by reference; none when <see langword="null"/>.</param>
+    public BitString(byte[]? content = null, IList<ITag>? children = null) : base(WithUnusedBits(content), children)
+    {
+    }
+    /// <summary>Creates the tag from content that already starts with the unused-bits byte, as parsed or as a factory receives it.</summary>
+    internal BitString(byte[]? rawContent, bool includesUnusedBits) : base(includesUnusedBits ? rawContent : WithUnusedBits(rawContent), null)
+    {
+    }
+
+    /// <summary>Creates the tag from one byte of bits; the unused-bits count is derived from its trailing zero bits.</summary>
+    /// <param name="content">The bits.</param>
+    public BitString(byte content) : this([content], null) { }
+
+    /// <inheritdoc/>
+    public override int TagNumber => 3;
+    /// <inheritdoc/>
+    public override string TagName => "BitString";
+    /// <inheritdoc/>
+    public override int TagClass => 0;
+
+    /// <summary>
+    /// Gets the number of trailing zero bits in the last byte, which the BIT STRING constructors use as the
+    /// unused-bits count. A last byte of 0 counts as having no unused bits.
+    /// </summary>
+    /// <param name="bitStringBytes">The bits, without an unused-bits byte; must not be empty.</param>
+    /// <returns>A number from 0 to 7.</returns>
+    public static int CalculateUnusedBits(byte[] bitStringBytes)
+    {
+        byte lastByte = bitStringBytes[bitStringBytes.Length - 1];
+        if (lastByte == 0)
+        {
+            return 0;
+        }
+        // The lowest set bit ends the used bits; the zero bits below it are unused. This used to return 7 minus
+        // that count, so 0x80 (one used bit) got no unused bits and 0x01 got seven.
+        int unusedBits = 0;
+        while ((lastByte & (1 << unusedBits)) == 0)
+        {
+            unusedBits++;
+        }
+        return unusedBits;
+    }
+
+    private static byte[]? WithUnusedBits(byte[]? content)
+    {
+        if (content is null)
+        {
+            return null;
+        }
+
+        if (content.Length == 0)
+        {
+            return [0x00]; // no bits
+        }
+
+        return [(byte)CalculateUnusedBits(content), .. content];
+    }
+}
